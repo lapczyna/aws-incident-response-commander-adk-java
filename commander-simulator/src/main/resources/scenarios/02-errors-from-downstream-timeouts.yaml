@@ -1,0 +1,108 @@
+# Scenario 2: 5xx caused by a downstream dependency, not by this service.
+#
+# The trap here is that checkout looks broken. Its error rate is up and its alarm is firing, but its
+# own CPU, memory and deployment history are all unremarkable, and the logs point at the payments
+# dependency timing out. An investigation that stops at "checkout is failing, restart it" has found
+# a symptom. The correct conclusion names the dependency.
+id: errors-from-downstream-timeouts
+title: Checkout 5xx rate elevated by payments-api timeouts
+description: >
+  5xx rose from ~0.4/min to ~28/min with no deployment and no resource pressure. Logs show
+  read timeouts calling payments-api. The fault is downstream; restarting checkout would achieve
+  nothing.
+expectedOutcome: REMEDIATION_PROPOSED
+serviceName: checkout
+environment: demo
+
+metrics:
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.4
+    afterValue: 28.0
+    changeAtOffsetMinutes: -18
+    jitter: 0.15
+  - name: TargetResponseTimeP99
+    unit: Seconds
+    baseline: 0.19
+    afterValue: 2.05
+    changeAtOffsetMinutes: -18
+    jitter: 0.1
+  - name: RequestCount
+    unit: Count
+    baseline: 235
+    jitter: 0.1
+  - name: CPUUtilization
+    unit: Percent
+    baseline: 31
+    jitter: 0.08
+
+logs:
+  - level: ERROR
+    message: "Read timed out calling payments-api POST /v1/authorize after 2000ms"
+    offsetMinutes: -18
+    repeat: 40
+    fields:
+      logger: com.example.checkout.PaymentsClient
+      dependency: payments-api
+  - level: ERROR
+    message: "org.springframework.web.client.ResourceAccessException: I/O error on POST request for \"http://payments-api/v1/authorize\""
+    offsetMinutes: -16
+    repeat: 25
+    fields:
+      logger: com.example.checkout.PaymentsClient
+  - level: WARN
+    message: "Circuit breaker 'payments' transitioned from CLOSED to OPEN"
+    offsetMinutes: -15
+    fields:
+      logger: io.github.resilience4j.circuitbreaker
+
+alarms:
+  - name: checkout-5xx-rate-high
+    state: ALARM
+    reason: "Threshold Crossed: 2 datapoints were greater than the threshold (10.0)."
+    metricName: HTTPCode_Target_5XX_Count
+    threshold: 10.0
+    changedAtOffsetMinutes: -16
+  - name: payments-api-availability
+    state: ALARM
+    reason: "Threshold Crossed: availability below 99.0%."
+    metricName: Availability
+    threshold: 99.0
+    changedAtOffsetMinutes: -19
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 2
+  runningCount: 2
+  pendingCount: 0
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/aa11bb"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -2880
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/cc22dd"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -2880
+      restartCount: 0
+  deployments:
+    - id: "ecs-svc/9223370000000000002"
+      status: PRIMARY
+      taskDefinition: "checkout:41"
+      desiredCount: 2
+      runningCount: 2
+      failedTasks: 0
+      createdAtOffsetMinutes: -2880
+
+changes: []
+
+versions:
+  - version: "2.3.1"
+    taskDefinition: "checkout:41"
+    deployedBy: "ci-deploy-role"
+    current: true
+    healthy: true
+    deployedAtOffsetMinutes: -2880

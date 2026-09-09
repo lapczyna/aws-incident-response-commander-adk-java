@@ -207,9 +207,8 @@ class ArchitectureRulesTest {
           Set.of(
               // Phase 3 introduces the ADK agents.
               ROOT + ".adk",
-              // Phase 7 brings the AWS adapters, Phase 2 the simulator.
-              ROOT + ".aws",
-              ROOT + ".simulator"));
+              // Phase 7 brings the AWS adapters.
+              ROOT + ".aws"));
 
   @Test
   @DisplayName("every declared layer package is populated (guards the empty-should relaxation)")

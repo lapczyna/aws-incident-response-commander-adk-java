@@ -74,6 +74,30 @@ This project hit it during Phase 1. The same applies to other technologies whose
 moved in Boot 4 — when something that "just worked" in Boot 3 produces no log output at all, check
 whether it now needs its own starter.
 
+## Two more Spring Boot 4 relocations, both found the hard way
+
+**MockMvc left `spring-boot-starter-test`.** `@AutoConfigureMockMvc` now lives in
+`org.springframework.boot.webmvc.test.autoconfigure` and ships in `spring-boot-starter-webmvc-test`,
+which the general test starter no longer pulls in. The symptom is a compile error naming a package
+that "does not exist".
+
+**Importing the BOM does not give you `-parameters`.** `spring-boot-starter-parent` sets that
+compiler flag; a project that imports `spring-boot-dependencies` instead — as this one does — has to
+set it itself:
+
+```xml
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-compiler-plugin</artifactId>
+  <configuration><parameters>true</parameters></configuration>
+</plugin>
+```
+
+Without it Spring cannot resolve `@PathVariable`, `@RequestParam` or constructor-binding names, and
+the failure appears as an opaque runtime 400 rather than anything at compile time. Worse, it can
+make a test pass for the wrong reason: a test asserting *4xx* will happily accept the 400 caused by
+the missing flag.
+
 ## Jackson 2 and Jackson 3 coexist — by design, not by accident
 
 This surprised me enough to be worth writing down. Spring Boot 4 moved to **Jackson 3**, which

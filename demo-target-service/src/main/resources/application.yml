@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: demo-target-service
+  # No datasource by default. The service runs standalone for tests and simple demos; docker-compose
+  # supplies a real PostgreSQL when the connection-pool-pressure scenario is wanted.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration
+
+server:
+  port: 8081
+
+demo:
+  faults:
+    # Off by default. An accidentally deployed image is inert until someone deliberately turns
+    # injection on, and even then every fault expires on its own.
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      service: demo-target-service
+
+logging:
+  level:
+    com.lapczynski.demotarget: INFO
+
+---
+# Demo profile: fault injection on, and a real database for pool-pressure scenarios.
+spring:
+  config:
+    activate:
+      on-profile: demo
+  autoconfigure:
+    exclude: []
+  datasource:
+    url: jdbc:postgresql://localhost:5432/demotarget
+    username: demotarget
+    password: demotarget
+    hikari:
+      maximum-pool-size: 10
+      pool-name: HikariPool-1
+
+demo:
+  faults:
+    enabled: true

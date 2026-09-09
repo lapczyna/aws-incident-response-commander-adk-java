@@ -1,0 +1,109 @@
+# Scenario 4: connection-pool exhaustion.
+#
+# Latency and errors both climb, but the cause is contention rather than a code change. The
+# distinguishing evidence is that active connections sit pinned at the pool maximum while CPU stays
+# low: the service is waiting, not working.
+id: db-connection-pool-exhaustion
+title: Checkout stalling on an exhausted database connection pool
+description: >
+  HikariCP is at its maximum of 10 active connections with a growing wait queue. Latency is up and
+  timeouts are appearing, but CPU is flat - the service is blocked, not busy. A long-running report
+  query holds connections open.
+expectedOutcome: REMEDIATION_PROPOSED
+serviceName: checkout
+environment: demo
+
+metrics:
+  - name: TargetResponseTimeP99
+    unit: Seconds
+    baseline: 0.2
+    afterValue: 3.4
+    changeAtOffsetMinutes: -20
+    jitter: 0.12
+  - name: DatabaseConnectionsActive
+    unit: Count
+    baseline: 3.0
+    afterValue: 10.0
+    changeAtOffsetMinutes: -20
+    jitter: 0.0
+  - name: DatabaseConnectionsPending
+    unit: Count
+    baseline: 0.0
+    afterValue: 24.0
+    changeAtOffsetMinutes: -20
+    jitter: 0.2
+  - name: CPUUtilization
+    unit: Percent
+    baseline: 29
+    jitter: 0.07
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.3
+    afterValue: 9.0
+    changeAtOffsetMinutes: -17
+    jitter: 0.3
+
+logs:
+  - level: ERROR
+    message: "HikariPool-1 - Connection is not available, request timed out after 30000ms"
+    offsetMinutes: -18
+    repeat: 34
+    fields:
+      logger: com.zaxxer.hikari.pool.HikariPool
+  - level: WARN
+    message: "HikariPool-1 - Thread starvation or clock leap detected (housekeeper delta=41s)"
+    offsetMinutes: -15
+    repeat: 4
+    fields:
+      logger: com.zaxxer.hikari.pool.HikariPool
+  - level: WARN
+    message: "Slow query detected: SELECT * FROM orders WHERE created_at > ? took 28400ms"
+    offsetMinutes: -21
+    repeat: 8
+    fields:
+      logger: com.example.checkout.ReportingRepository
+
+alarms:
+  - name: checkout-p99-latency-high
+    state: ALARM
+    reason: "Threshold Crossed: 4 datapoints were greater than the threshold (0.400)."
+    metricName: TargetResponseTimeP99
+    threshold: 0.4
+    changedAtOffsetMinutes: -18
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 2
+  runningCount: 2
+  pendingCount: 0
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/kk66ll"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -4320
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/mm77nn"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -4320
+      restartCount: 0
+  deployments:
+    - id: "ecs-svc/9223370000000000004"
+      status: PRIMARY
+      taskDefinition: "checkout:41"
+      desiredCount: 2
+      runningCount: 2
+      failedTasks: 0
+      createdAtOffsetMinutes: -4320
+
+changes: []
+
+versions:
+  - version: "2.3.1"
+    taskDefinition: "checkout:41"
+    deployedBy: "ci-deploy-role"
+    current: true
+    healthy: true
+    deployedAtOffsetMinutes: -4320

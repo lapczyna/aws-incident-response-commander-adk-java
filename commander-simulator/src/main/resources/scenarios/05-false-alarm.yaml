@@ -1,0 +1,88 @@
+# Scenario 5: nothing is actually wrong.
+#
+# This scenario exists to prove the system can decline to act. An alarm fired on a threshold that is
+# too tight for normal traffic variation; every other signal is healthy. The correct outcome is to
+# close the incident with no remediation.
+#
+# A system that always finds something to fix is more dangerous than one that sometimes finds
+# nothing, so this is one of the more important scenarios in the suite.
+id: false-alarm
+title: Latency alarm fired on a threshold below normal variance
+description: >
+  A single datapoint crossed a 0.25s p99 threshold during a routine traffic peak. Latency is within
+  its normal band, no deployment occurred, no errors, tasks healthy. There is no actionable
+  incident and the investigation should say so.
+expectedOutcome: NO_ACTION_NEEDED
+serviceName: checkout
+environment: demo
+
+metrics:
+  - name: TargetResponseTimeP99
+    unit: Seconds
+    baseline: 0.21
+    jitter: 0.22
+  - name: RequestCount
+    unit: Count
+    baseline: 260
+    jitter: 0.2
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.2
+    jitter: 0.4
+  - name: CPUUtilization
+    unit: Percent
+    baseline: 33
+    jitter: 0.12
+
+logs:
+  - level: INFO
+    message: "Processed 1284 checkout requests in the last minute"
+    offsetMinutes: -10
+    repeat: 5
+    fields:
+      logger: com.example.checkout.MetricsReporter
+
+alarms:
+  - name: checkout-p99-latency-high
+    state: ALARM
+    reason: "Threshold Crossed: 1 datapoint was greater than the threshold (0.250)."
+    metricName: TargetResponseTimeP99
+    threshold: 0.25
+    changedAtOffsetMinutes: -9
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 2
+  runningCount: 2
+  pendingCount: 0
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/oo88pp"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -5760
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/qq99rr"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -5760
+      restartCount: 0
+  deployments:
+    - id: "ecs-svc/9223370000000000005"
+      status: PRIMARY
+      taskDefinition: "checkout:41"
+      desiredCount: 2
+      runningCount: 2
+      failedTasks: 0
+      createdAtOffsetMinutes: -5760
+
+changes: []
+
+versions:
+  - version: "2.3.1"
+    taskDefinition: "checkout:41"
+    deployedBy: "ci-deploy-role"
+    current: true
+    healthy: true
+    deployedAtOffsetMinutes: -5760

@@ -1,0 +1,110 @@
+# Scenario 7: a signal source fails mid-investigation.
+#
+# The logs source answers the first query and then starts timing out. A failing specialist must
+# degrade the investigation into a recorded evidence gap, not abort the whole run, and the final
+# report has to distinguish "the logs showed nothing" from "the logs could not be read".
+#
+# The `failures` block below is what makes this testable without mocking: the port genuinely throws.
+id: tool-failure-during-investigation
+title: Logs source times out partway through the investigation
+description: >
+  A real deployment-related latency regression is under way, but CloudWatch Logs Insights starts
+  timing out after the first query. Metrics, ECS and CloudTrail remain available, so a conclusion is
+  still reachable - it just has to be stated with the missing evidence acknowledged.
+expectedOutcome: REMEDIATION_PROPOSED
+serviceName: checkout
+environment: demo
+
+failures:
+  logs:
+    reason: TIMEOUT
+    message: "CloudWatch Logs Insights query exceeded the 10s deadline"
+    afterCalls: 1
+
+metrics:
+  - name: TargetResponseTimeP99
+    unit: Seconds
+    baseline: 0.2
+    afterValue: 0.85
+    changeAtOffsetMinutes: -30
+    jitter: 0.09
+  - name: RequestCount
+    unit: Count
+    baseline: 250
+    jitter: 0.1
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.4
+    jitter: 0.25
+  - name: CPUUtilization
+    unit: Percent
+    baseline: 36
+    afterValue: 44
+    changeAtOffsetMinutes: -30
+    jitter: 0.1
+
+logs:
+  - level: WARN
+    message: "Slow query detected: SELECT * FROM inventory WHERE sku = ? took 380ms"
+    offsetMinutes: -28
+    repeat: 12
+    fields:
+      logger: com.example.checkout.InventoryRepository
+
+alarms:
+  - name: checkout-p99-latency-high
+    state: ALARM
+    reason: "Threshold Crossed: 3 datapoints were greater than the threshold (0.400)."
+    metricName: TargetResponseTimeP99
+    threshold: 0.4
+    changedAtOffsetMinutes: -27
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 2
+  runningCount: 2
+  pendingCount: 0
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/ww22xx"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:44"
+      startedAtOffsetMinutes: -30
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/yy33zz"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:44"
+      startedAtOffsetMinutes: -29
+      restartCount: 0
+  deployments:
+    - id: "ecs-svc/9223370000000000007"
+      status: PRIMARY
+      taskDefinition: "checkout:44"
+      desiredCount: 2
+      runningCount: 2
+      failedTasks: 0
+      createdAtOffsetMinutes: -30
+
+changes:
+  - eventId: "d0a3e4f5-0000-4c3d-9e4f-000000000001"
+    eventName: UpdateService
+    eventSource: ecs.amazonaws.com
+    performedBy: "ci-deploy-role"
+    resourceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+    detail: "Updated service checkout to task definition checkout:44 (app version 2.5.0)"
+    offsetMinutes: -30
+
+versions:
+  - version: "2.5.0"
+    taskDefinition: "checkout:44"
+    deployedBy: "ci-deploy-role"
+    current: true
+    healthy: false
+    deployedAtOffsetMinutes: -30
+  - version: "2.4.0"
+    taskDefinition: "checkout:42"
+    deployedBy: "ci-deploy-role"
+    current: false
+    healthy: true
+    deployedAtOffsetMinutes: -2880

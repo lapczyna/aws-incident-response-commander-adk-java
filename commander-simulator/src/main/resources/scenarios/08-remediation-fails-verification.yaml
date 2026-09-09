@@ -1,0 +1,116 @@
+# Scenario 8: the fix does not work.
+#
+# The evidence points convincingly at a bad deployment, so a rollback is the reasonable proposal -
+# but latency stays elevated afterwards, because the real cause is an external dependency that the
+# deployment merely coincided with.
+#
+# Verification exists precisely for this case. The system must notice that recovery did not happen,
+# report it honestly, and move to FAILED rather than declaring success because it did the thing it
+# said it would do.
+id: remediation-fails-verification
+title: Rollback completes but latency does not recover
+description: >
+  Latency stepped up at the same moment as a deploy, and the deploy is the obvious suspect. The
+  actual cause is a slow upstream DNS resolver that began degrading a minute earlier. Rolling back
+  changes nothing, and post-remediation verification must catch that.
+expectedOutcome: VERIFICATION_FAILS
+serviceName: checkout
+environment: demo
+
+metrics:
+  # No step back down: latency stays high for the whole window, including after any remediation.
+  - name: TargetResponseTimeP99
+    unit: Seconds
+    baseline: 0.21
+    afterValue: 1.15
+    changeAtOffsetMinutes: -40
+    jitter: 0.07
+  - name: RequestCount
+    unit: Count
+    baseline: 238
+    jitter: 0.1
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.5
+    afterValue: 3.0
+    changeAtOffsetMinutes: -40
+    jitter: 0.3
+  - name: CPUUtilization
+    unit: Percent
+    baseline: 30
+    jitter: 0.08
+
+logs:
+  - level: WARN
+    message: "DNS resolution for inventory-api.internal took 2840ms"
+    offsetMinutes: -41
+    repeat: 22
+    fields:
+      logger: com.example.checkout.DnsMetrics
+  - level: INFO
+    message: "Started CheckoutApplication in 7.9 seconds (version 2.6.0)"
+    offsetMinutes: -40
+  - level: WARN
+    message: "Upstream call to inventory-api exceeded soft timeout of 500ms (actual 3100ms)"
+    offsetMinutes: -38
+    repeat: 30
+    fields:
+      logger: com.example.checkout.InventoryClient
+
+alarms:
+  - name: checkout-p99-latency-high
+    state: ALARM
+    reason: "Threshold Crossed: 6 datapoints were greater than the threshold (0.400)."
+    metricName: TargetResponseTimeP99
+    threshold: 0.4
+    changedAtOffsetMinutes: -37
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 2
+  runningCount: 2
+  pendingCount: 0
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/a0b0c0"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:45"
+      startedAtOffsetMinutes: -40
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/d0e0f0"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:45"
+      startedAtOffsetMinutes: -39
+      restartCount: 0
+  deployments:
+    - id: "ecs-svc/9223370000000000008"
+      status: PRIMARY
+      taskDefinition: "checkout:45"
+      desiredCount: 2
+      runningCount: 2
+      failedTasks: 0
+      createdAtOffsetMinutes: -40
+
+changes:
+  - eventId: "e1b4f5a6-0000-4d4e-8f50-000000000001"
+    eventName: UpdateService
+    eventSource: ecs.amazonaws.com
+    performedBy: "ci-deploy-role"
+    resourceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+    detail: "Updated service checkout to task definition checkout:45 (app version 2.6.0)"
+    offsetMinutes: -40
+
+versions:
+  - version: "2.6.0"
+    taskDefinition: "checkout:45"
+    deployedBy: "ci-deploy-role"
+    current: true
+    healthy: false
+    deployedAtOffsetMinutes: -40
+  - version: "2.5.0"
+    taskDefinition: "checkout:44"
+    deployedBy: "ci-deploy-role"
+    current: false
+    healthy: true
+    deployedAtOffsetMinutes: -4320

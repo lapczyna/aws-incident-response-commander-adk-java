@@ -1,0 +1,125 @@
+# Scenario 1: the primary demo path.
+#
+# A deploy 25 minutes ago tripled p99 latency. Metrics, logs, ECS deployments and CloudTrail all
+# point at the same change, so a competent investigation should converge on a rollback and ask for
+# approval. This is the scenario the scripted demo walks through end to end.
+id: latency-after-bad-deployment
+title: Checkout p99 latency tripled after deploy v2.4.0
+description: >
+  Response time stepped from ~180ms to ~620ms at the moment task definition 42 rolled out.
+  Error rate is unchanged, so this is a latency regression rather than a failure - the fix is a
+  rollback to v2.3.1, not a restart.
+expectedOutcome: REMEDIATION_PROPOSED
+serviceName: checkout
+environment: demo
+
+metrics:
+  - name: TargetResponseTimeP99
+    unit: Seconds
+    baseline: 0.18
+    afterValue: 0.62
+    changeAtOffsetMinutes: -25
+    jitter: 0.08
+  - name: RequestCount
+    unit: Count
+    baseline: 240
+    jitter: 0.12
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.4
+    jitter: 0.3
+  - name: CPUUtilization
+    unit: Percent
+    baseline: 34
+    afterValue: 41
+    changeAtOffsetMinutes: -25
+    jitter: 0.1
+
+logs:
+  - level: WARN
+    message: "Slow query detected: SELECT * FROM order_items WHERE order_id = ? took 412ms"
+    offsetMinutes: -22
+    repeat: 18
+    fields:
+      logger: com.example.checkout.OrderRepository
+      version: "2.4.0"
+  - level: INFO
+    message: "Started CheckoutApplication in 8.2 seconds (version 2.4.0)"
+    offsetMinutes: -25
+  - level: WARN
+    message: "HikariPool-1 - Connection is not available, request timed out after 2000ms"
+    offsetMinutes: -14
+    repeat: 3
+    fields:
+      logger: com.zaxxer.hikari.pool.HikariPool
+
+alarms:
+  - name: checkout-p99-latency-high
+    state: ALARM
+    reason: "Threshold Crossed: 3 datapoints were greater than the threshold (0.400)."
+    metricName: TargetResponseTimeP99
+    threshold: 0.4
+    changedAtOffsetMinutes: -21
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 2
+  runningCount: 2
+  pendingCount: 0
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/a1b2c3"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:42"
+      startedAtOffsetMinutes: -25
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/d4e5f6"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:42"
+      startedAtOffsetMinutes: -24
+      restartCount: 0
+  deployments:
+    - id: "ecs-svc/9223370000000000001"
+      status: PRIMARY
+      taskDefinition: "checkout:42"
+      desiredCount: 2
+      runningCount: 2
+      failedTasks: 0
+      createdAtOffsetMinutes: -25
+
+changes:
+  - eventId: "b8f1c2d3-0000-4a1b-9c2d-000000000001"
+    eventName: UpdateService
+    eventSource: ecs.amazonaws.com
+    performedBy: "ci-deploy-role"
+    resourceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+    detail: "Updated service checkout to task definition checkout:42 (app version 2.4.0)"
+    offsetMinutes: -25
+  - eventId: "b8f1c2d3-0000-4a1b-9c2d-000000000002"
+    eventName: RegisterTaskDefinition
+    eventSource: ecs.amazonaws.com
+    performedBy: "ci-deploy-role"
+    resourceArn: "arn:aws:ecs:eu-west-1:123456789012:task-definition/checkout:42"
+    detail: "Registered checkout:42"
+    offsetMinutes: -27
+
+versions:
+  - version: "2.4.0"
+    taskDefinition: "checkout:42"
+    deployedBy: "ci-deploy-role"
+    current: true
+    healthy: false
+    deployedAtOffsetMinutes: -25
+  - version: "2.3.1"
+    taskDefinition: "checkout:41"
+    deployedBy: "ci-deploy-role"
+    current: false
+    healthy: true
+    deployedAtOffsetMinutes: -2880
+  - version: "2.3.0"
+    taskDefinition: "checkout:40"
+    deployedBy: "ci-deploy-role"
+    current: false
+    healthy: true
+    deployedAtOffsetMinutes: -7200

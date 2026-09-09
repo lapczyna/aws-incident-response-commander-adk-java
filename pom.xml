@@ -201,6 +201,22 @@
     </pluginManagement>
 
     <plugins>
+      <!--
+        Retains parameter names in the bytecode.
+
+        spring-boot-starter-parent sets this for you, but this project imports the Boot BOM instead
+        of inheriting that parent, so it has to be set here. Without it Spring cannot resolve
+        @PathVariable, @RequestParam or constructor-binding names, and the failure is a confusing
+        400 at runtime rather than anything at compile time.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-enforcer-plugin</artifactId>

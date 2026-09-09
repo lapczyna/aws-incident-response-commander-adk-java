@@ -1,0 +1,102 @@
+# Scenario 6: the signals disagree.
+#
+# Metrics say the service is healthy; logs say it is failing; the alarm has no data at all. There is
+# no honest way to reach a confident conclusion, and the correct behaviour is to report low
+# confidence, name the contradiction explicitly, and NOT propose a remediation.
+#
+# This scenario is the main defence against a system that manufactures certainty. It should be
+# impossible to pass it by guessing.
+id: contradictory-evidence
+title: Metrics and logs disagree about checkout health
+description: >
+  ALB metrics show a normal error rate and normal latency, while application logs show a steady
+  stream of 500s. The latency alarm is in INSUFFICIENT_DATA, so it corroborates neither. Either
+  metric publication is broken or the errors bypass the load balancer; the evidence available
+  cannot distinguish these.
+expectedOutcome: INCONCLUSIVE
+serviceName: checkout
+environment: demo
+
+metrics:
+  - name: TargetResponseTimeP99
+    unit: Seconds
+    baseline: 0.19
+    jitter: 0.06
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.3
+    jitter: 0.2
+  - name: RequestCount
+    unit: Count
+    baseline: 244
+    jitter: 0.09
+  - name: CPUUtilization
+    unit: Percent
+    baseline: 32
+    jitter: 0.08
+
+logs:
+  - level: ERROR
+    message: "Unhandled exception processing /api/checkout: java.lang.IllegalStateException: cart already finalised"
+    offsetMinutes: -20
+    repeat: 45
+    fields:
+      logger: com.example.checkout.CheckoutController
+      status: "500"
+  - level: ERROR
+    message: "Returning 500 Internal Server Error for correlation id 7f3a2b91"
+    offsetMinutes: -12
+    repeat: 30
+    fields:
+      logger: com.example.checkout.ErrorHandler
+  - level: INFO
+    message: "Health check OK - all dependencies reachable"
+    offsetMinutes: -5
+    repeat: 5
+    fields:
+      logger: com.example.checkout.HealthIndicator
+
+alarms:
+  - name: checkout-5xx-rate-high
+    state: INSUFFICIENT_DATA
+    reason: "Insufficient Data: 5 datapoints were unknown."
+    metricName: HTTPCode_Target_5XX_Count
+    threshold: 10.0
+    changedAtOffsetMinutes: -25
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 2
+  runningCount: 2
+  pendingCount: 0
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/ss00tt"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -2880
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/uu11vv"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:41"
+      startedAtOffsetMinutes: -2880
+      restartCount: 0
+  deployments:
+    - id: "ecs-svc/9223370000000000006"
+      status: PRIMARY
+      taskDefinition: "checkout:41"
+      desiredCount: 2
+      runningCount: 2
+      failedTasks: 0
+      createdAtOffsetMinutes: -2880
+
+changes: []
+
+versions:
+  - version: "2.3.1"
+    taskDefinition: "checkout:41"
+    deployedBy: "ci-deploy-role"
+    current: true
+    healthy: true
+    deployedAtOffsetMinutes: -2880

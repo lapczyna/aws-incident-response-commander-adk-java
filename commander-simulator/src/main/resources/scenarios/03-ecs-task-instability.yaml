@@ -1,0 +1,119 @@
+# Scenario 3: tasks crash-looping.
+#
+# The service never reaches its desired count. Tasks start, fail their health check and are
+# replaced. The stoppedReason is the decisive evidence, and it names an OOM.
+id: ecs-task-instability
+title: Checkout tasks crash-looping after memory limit reduced
+description: >
+  Desired count is 3 but only 1 task stays running. Tasks are killed with OutOfMemoryError shortly
+  after start, following a task definition change that lowered the memory reservation.
+expectedOutcome: REMEDIATION_PROPOSED
+serviceName: checkout
+environment: demo
+
+metrics:
+  - name: RunningTaskCount
+    unit: Count
+    baseline: 3.0
+    afterValue: 1.0
+    changeAtOffsetMinutes: -32
+    jitter: 0.0
+  - name: MemoryUtilization
+    unit: Percent
+    baseline: 62
+    afterValue: 97
+    changeAtOffsetMinutes: -32
+    jitter: 0.03
+  - name: HTTPCode_Target_5XX_Count
+    unit: Count
+    baseline: 0.5
+    afterValue: 12.0
+    changeAtOffsetMinutes: -30
+    jitter: 0.25
+
+logs:
+  - level: ERROR
+    message: "java.lang.OutOfMemoryError: Java heap space"
+    offsetMinutes: -28
+    repeat: 6
+    fields:
+      logger: org.apache.catalina.core.ContainerBase
+  - level: WARN
+    message: "Health check failed: readiness probe returned 503"
+    offsetMinutes: -27
+    repeat: 12
+    fields:
+      logger: com.example.checkout.HealthIndicator
+
+alarms:
+  - name: checkout-running-task-count-low
+    state: ALARM
+    reason: "Threshold Crossed: running task count below desired for 5 datapoints."
+    metricName: RunningTaskCount
+    threshold: 3.0
+    changedAtOffsetMinutes: -30
+
+ecs:
+  serviceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+  desiredCount: 3
+  runningCount: 1
+  pendingCount: 2
+  tasks:
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/ee33ff"
+      lastStatus: RUNNING
+      healthStatus: HEALTHY
+      taskDefinition: "checkout:43"
+      startedAtOffsetMinutes: -32
+      restartCount: 0
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/gg44hh"
+      lastStatus: STOPPED
+      healthStatus: UNHEALTHY
+      taskDefinition: "checkout:43"
+      startedAtOffsetMinutes: -12
+      stoppedReason: "OutOfMemoryError: Container killed due to memory usage"
+      restartCount: 4
+    - taskArn: "arn:aws:ecs:eu-west-1:123456789012:task/commander-demo/ii55jj"
+      lastStatus: STOPPED
+      healthStatus: UNHEALTHY
+      taskDefinition: "checkout:43"
+      startedAtOffsetMinutes: -6
+      stoppedReason: "OutOfMemoryError: Container killed due to memory usage"
+      restartCount: 5
+  deployments:
+    - id: "ecs-svc/9223370000000000003"
+      status: PRIMARY
+      taskDefinition: "checkout:43"
+      desiredCount: 3
+      runningCount: 1
+      failedTasks: 9
+      createdAtOffsetMinutes: -32
+
+changes:
+  - eventId: "c9f2d3e4-0000-4b2c-8d3e-000000000001"
+    eventName: RegisterTaskDefinition
+    eventSource: ecs.amazonaws.com
+    performedBy: "platform-engineer"
+    resourceArn: "arn:aws:ecs:eu-west-1:123456789012:task-definition/checkout:43"
+    detail: "Registered checkout:43 - memory reservation lowered from 1024 to 512 MiB"
+    offsetMinutes: -34
+  - eventId: "c9f2d3e4-0000-4b2c-8d3e-000000000002"
+    eventName: UpdateService
+    eventSource: ecs.amazonaws.com
+    performedBy: "platform-engineer"
+    resourceArn: "arn:aws:ecs:eu-west-1:123456789012:service/commander-demo/checkout"
+    detail: "Updated service checkout to task definition checkout:43"
+    offsetMinutes: -32
+
+versions:
+  - version: "2.4.1"
+    taskDefinition: "checkout:43"
+    deployedBy: "platform-engineer"
+    current: true
+    healthy: false
+    deployedAtOffsetMinutes: -32
+  - version: "2.4.0"
+    taskDefinition: "checkout:42"
+    deployedBy: "ci-deploy-role"
+    current: false
+    healthy: true
+    deployedAtOffsetMinutes: -1440

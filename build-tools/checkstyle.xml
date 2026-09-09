@@ -41,7 +41,16 @@
     <module name="CovariantEquals"/>
     <module name="StringLiteralEquality"/>
     <module name="NoFinalizer"/>
-    <module name="MissingSwitchDefault"/>
+    <!--
+      MissingSwitchDefault is deliberately NOT enabled.
+
+      This project prefers exhaustive switch EXPRESSIONS over enums, which the compiler verifies:
+      adding an enum constant breaks the build until every switch handles it. A `default` clause
+      would defeat that check by silently absorbing new constants - and in code like
+      FaultParameters, where each branch applies a safety ceiling, a new fault type quietly
+      falling through to `default` would mean an unclamped magnitude. The compiler's check is
+      strictly stronger than this rule, so the rule is off.
+    -->
     <module name="FallThrough"/>
     <module name="SimplifyBooleanExpression"/>
     <module name="SimplifyBooleanReturn"/>
@@ -62,7 +71,14 @@
     </module>
     <module name="TypeName"/>
     <module name="MethodName"/>
-    <module name="ConstantName"/>
+    <!--
+      Permits the conventional SLF4J logger names alongside SCREAMING_SNAKE_CASE. A logger is
+      technically a constant but is universally named `log` or `logger`, and renaming it would
+      make every class here read oddly for no benefit.
+    -->
+    <module name="ConstantName">
+      <property name="format" value="^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$|^log(ger)?$"/>
+    </module>
     <module name="LocalVariableName"/>
     <module name="ParameterName"/>
 
