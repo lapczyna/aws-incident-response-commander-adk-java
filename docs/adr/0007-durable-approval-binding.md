@@ -64,5 +64,37 @@ actor who opened the incident; every decision is appended to the audit log.
 - A legitimate change to the incident invalidates a pending approval and forces re-approval. That is
   the intended behaviour, and the UI must explain it clearly or it will read as a bug.
 
+## Addendum (Phase 6): what building it actually proved, and one test that proved nothing
+
+The mechanism works. `LongRunningFunctionTool` with `requireConfirmation` pauses the invocation,
+`PostgresSessionService` persists everything needed to reconstruct it, a brand-new `Runner` sharing
+only the database resumes it, and the action executes exactly once. That is ADR-0004 and ADR-0005
+both paying for themselves.
+
+Two things are worth recording from getting there.
+
+**The failure mode of a durable session service is silence.** ADK's `InMemorySessionService` keeps a
+*reference* to each event; a durable one stores a *snapshot*. Any field that does not survive
+serialisation is therefore invisible to every in-memory test and missing in production. The specific
+consequence here would be an approved action that never runs while the audit trail records it as
+granted — the worst kind of failure, because every observable signal says it worked.
+`EventSerialisationFidelityTest` now pins the fields resumption depends on (function-call ids,
+`requestedToolConfirmations`, `longRunningToolIds`, author) in a test that needs no database and runs
+in milliseconds.
+
+**A test that counts the wrong thing is worse than no test.** The first version of the restart test
+asserted an execution counter that lived inside the injected executor — while running in dry-run
+mode, where `RemediationTool` deliberately never calls the executor. It reported zero executions and
+looked like a broken resume for as long as it took to dump the stored events and find
+`"status": "executed"` sitting in the trail. The system was right the whole time.
+
+The fix was not to change the assertion but to make the semantics explicit: `engine(boolean dryRun)`
+forces every test to state which mode it exercises, tests that assert an action ran use
+`dryRun = false`, and the dry-run test now asserts the executor was **not** reached. Had this been
+left as it was, it would have passed for the wrong reason forever and masked a genuine regression in
+exactly the capability the project is built around.
+
+---
+
 **Rejected:** trusting the model to re-state the approved action at execution time. That hands the
 authority decision back to the component least able to be held accountable for it.

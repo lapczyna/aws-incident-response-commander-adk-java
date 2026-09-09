@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Surfaces ADK's own diagnostics during integration tests. The confirmation processor explains
+     precisely why it declines to resume a call, and that explanation is the fastest route to
+     diagnosing a persistence round-trip that loses something the resume depends on. -->
+<configuration>
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss} %-5level [%logger{25}] %msg%n</pattern>
+    </encoder>
+  </appender>
+  <logger name="com.google.adk.flows.llmflows" level="WARN"/>
+  <logger name="com.lapczynski.commander" level="INFO"/>
+  <root level="WARN">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

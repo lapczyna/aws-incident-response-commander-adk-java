@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 5 of 11 complete** — a bounded critique loop refines the
-hypothesis, and a deterministic policy gate with no model in it decides whether anything may run.
+Built in phases. Current state: **Phase 6 of 11 complete** — an investigation pauses for human
+approval, survives a restart, and executes the approved action exactly once.
 
-`./mvnw verify` runs **272 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **286 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -31,8 +31,8 @@ hypothesis, and a deterministic policy gate with no model in it decides whether 
 | 3 | First ADK investigation (vertical slice) | ✅ done |
 | 4 | Parallel multi-agent investigation | ✅ done |
 | 5 | Bounded diagnosis and remediation planning | ✅ done |
-| 6 | Durable approval-gated remediation | next |
-| 7 | Guarded AWS adapters | planned |
+| 6 | Durable approval-gated remediation | ✅ done |
+| 7 | Guarded AWS adapters | next |
 | 8 | Recovery verification and reporting | planned |
 | 9 | Evaluation, security and observability | planned |
 | 10 | Cost-conscious AWS deployment | planned |
