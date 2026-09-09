@@ -1,0 +1,12 @@
+# Persistence integration tests. The datasource URL is supplied by Testcontainers at runtime
+# via @DynamicPropertySource, so nothing here points at a real database.
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  sql:
+    init:
+      mode: never
+logging:
+  level:
+    org.flywaydb: INFO

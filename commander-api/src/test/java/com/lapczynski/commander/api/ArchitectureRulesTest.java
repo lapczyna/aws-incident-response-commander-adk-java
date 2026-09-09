@@ -205,12 +205,8 @@ class ArchitectureRulesTest {
   private static final Set<String> BOOTSTRAP_EMPTY =
       new LinkedHashSet<>(
           Set.of(
-              // Phase 1 populates the domain and application layers.
-              ROOT + ".domain",
-              ROOT + ".application",
-              // Phase 3 introduces the ADK agents; Phase 1 the persistence layer.
+              // Phase 3 introduces the ADK agents.
               ROOT + ".adk",
-              ROOT + ".persistence",
               // Phase 7 brings the AWS adapters, Phase 2 the simulator.
               ROOT + ".aws",
               ROOT + ".simulator"));

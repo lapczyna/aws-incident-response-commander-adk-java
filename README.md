@@ -18,14 +18,16 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 0 of 11 complete** — architecture, module boundaries,
-dependency matrix, ADRs, diagrams and enforced static analysis.
+Built in phases. Current state: **Phase 1 of 11 complete** — the durable incident lifecycle:
+domain model, state machine, policy engine, PostgreSQL schema and repositories.
+
+`./mvnw verify` runs **110 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
 | 0 | Architecture and repository foundation | ✅ done |
-| 1 | Domain and durable incident lifecycle | next |
-| 2 | Fault-injectable service and signal simulator | planned |
+| 1 | Domain and durable incident lifecycle | ✅ done |
+| 2 | Fault-injectable service and signal simulator | next |
 | 3 | First ADK investigation (vertical slice) | planned |
 | 4 | Parallel multi-agent investigation | planned |
 | 5 | Bounded diagnosis and remediation planning | planned |
@@ -180,6 +182,7 @@ Set with `--spring.profiles.active=...`. See
 | [ADRs](docs/adr/README.md) | Nine decision records, plus the ADK Java compatibility findings |
 | [Diagrams](docs/diagrams/architecture.md) | Component, agent topology, approval sequence, state machine, deployment |
 | [Dependency matrix](docs/dependency-matrix.md) | Every version, resolved by the build and explained |
+| [Schema](docs/schema.md) | Durable state, the constraints that carry weight, and the append-only audit rule |
 
 Arriving in later phases: simulator scenario tutorial, Gemini/Ollama/Bedrock setup guides, AWS
 deployment and teardown, cost analysis, threat model, runbook, evaluation guide, troubleshooting and

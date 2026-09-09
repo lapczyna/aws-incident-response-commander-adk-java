@@ -48,6 +48,32 @@ newest release on Maven Central.
 | `com.anthropic:anthropic-java` | 2.15.0 | ADK | Backs ADK's `models.Claude`. Central has 2.61.0; we take ADK's tested version. |
 | `com.google.guava:guava` | 33.0.0-jre (compile) / 33.5.0-jre (test) | ADK / WireMock | Harmless divergence: the two never share a classpath. WireMock's copy is test-scoped and only in commander-integrations-aws, which does not depend on ADK. Not force-pinned, because forcing Guava above what ADK was tested against is the riskier choice. |
 
+## Spring Boot 4 moved Flyway auto-configuration out of `spring-boot-autoconfigure`
+
+Worth writing down because it fails silently. In Boot 3, putting `flyway-core` on the classpath was
+enough — auto-configuration picked it up and ran migrations at startup. In Boot 4, auto-configuration
+was split into per-technology modules, and Flyway's lives in `spring-boot-flyway`, surfaced through
+`spring-boot-starter-flyway`.
+
+With only `flyway-core` declared, the application starts perfectly happily, logs nothing about
+Flyway, and leaves the schema uncreated. The first symptom is `relation "incidents" does not exist`
+from unrelated code. The fix:
+
+```xml
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-flyway</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.flywaydb</groupId>
+  <artifactId>flyway-database-postgresql</artifactId>
+</dependency>
+```
+
+This project hit it during Phase 1. The same applies to other technologies whose auto-configuration
+moved in Boot 4 — when something that "just worked" in Boot 3 produces no log output at all, check
+whether it now needs its own starter.
+
 ## Jackson 2 and Jackson 3 coexist — by design, not by accident
 
 This surprised me enough to be worth writing down. Spring Boot 4 moved to **Jackson 3**, which
