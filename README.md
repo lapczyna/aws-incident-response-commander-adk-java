@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 7 of 11 complete** — the same investigation now runs
-against real AWS through guarded, least-privilege adapters, or against the simulator, unchanged.
+Built in phases. Current state: **Phase 8 of 11 complete** — an incident now runs from alert to
+postmortem, and the system will tell you when its own fix did not work.
 
-`./mvnw verify` runs **304 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **372 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -33,8 +33,8 @@ against real AWS through guarded, least-privilege adapters, or against the simul
 | 5 | Bounded diagnosis and remediation planning | ✅ done |
 | 6 | Durable approval-gated remediation | ✅ done |
 | 7 | Guarded AWS adapters | ✅ done |
-| 8 | Recovery verification and reporting | next |
-| 9 | Evaluation, security and observability | planned |
+| 8 | Recovery verification and reporting | ✅ done |
+| 9 | Evaluation, security and observability | next |
 | 10 | Cost-conscious AWS deployment | planned |
 | 11 | Portfolio polish | planned |
 
@@ -49,7 +49,7 @@ This project exists partly to be read. Each ADK concept below maps to a specific
 | `SequentialAgent` | `commander-adk` — `IncidentAgentFactory` | Ordered incident stages |
 | `ParallelAgent` | same | Four investigators run concurrently |
 | `LoopAgent` + `ExitLoopTool` | `DiagnosisAgents` | Hypothesis → critique → refine, `maxIterations = 3` |
-| Custom `BaseAgent` | `PolicyGateAgent` | A deterministic stage with no model at all, guarding its sub-agents |
+| Custom `BaseAgent` | `PolicyGateAgent`, `RecoveryVerifierAgent` | Deterministic stages with no model at all — one guards its sub-agents, the other decides whether the incident is over |
 | `LlmAgent.outputKey` | all specialists | Typed hand-off through session state |
 | Callbacks | `commander-adk` | Budgets, deadlines, partial-failure handling |
 | `BasePlugin` | `BudgetPlugin`, cost telemetry | Token, request and cost accounting |
@@ -198,17 +198,18 @@ Full instructions, including how to pick a local model that can actually call to
 
 | Document | Contents |
 |---|---|
-| [ADRs](docs/adr/README.md) | Nine decision records, plus the ADK Java compatibility findings |
+| [ADRs](docs/adr/README.md) | Ten decision records, plus the ADK Java compatibility findings |
 | [Diagrams](docs/diagrams/architecture.md) | Component, agent topology, approval sequence, state machine, deployment |
 | [Dependency matrix](docs/dependency-matrix.md) | Every version, resolved by the build and explained |
 | [Schema](docs/schema.md) | Durable state, the constraints that carry weight, and the append-only audit rule |
 | [Simulator & target service](docs/simulator.md) | The eight scenarios, fixture format, and the fault-injection safety model |
 | [Model setup](docs/model-setup.md) | Gemini, Ollama and the fake model; choosing a local model that can actually call tools |
 | [AWS integration](docs/aws-integration.md) | The read adapters, their bounds, and the three independent layers enforcing the tag rule |
+| [Verification & reporting](docs/reporting.md) | Why the verdict is arithmetic, and how citations are checked rather than trusted |
+| [Sample postmortem](docs/samples/postmortem-checkout-latency.md) | A real rendered report — of a remediation that did not work |
 
-Arriving in later phases: simulator scenario tutorial, Gemini/Ollama/Bedrock setup guides, AWS
-deployment and teardown, cost analysis, threat model, runbook, evaluation guide, troubleshooting and
-a sample postmortem.
+Arriving in later phases: Bedrock setup guide, AWS deployment and teardown, cost analysis, threat
+model, runbook, evaluation guide and troubleshooting.
 
 ---
 

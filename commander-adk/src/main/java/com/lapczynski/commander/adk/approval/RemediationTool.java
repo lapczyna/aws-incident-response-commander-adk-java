@@ -1,6 +1,7 @@
 package com.lapczynski.commander.adk.approval;
 
 import com.google.adk.tools.Annotations.Schema;
+import com.lapczynski.commander.application.ExecutionJournal;
 import com.lapczynski.commander.application.port.IdempotencyStore;
 import com.lapczynski.commander.domain.approval.ActionFingerprint;
 import com.lapczynski.commander.domain.evidence.Confidence;
@@ -9,8 +10,11 @@ import com.lapczynski.commander.domain.incident.IncidentStatus;
 import com.lapczynski.commander.domain.policy.PolicyDecision;
 import com.lapczynski.commander.domain.policy.PolicyEngine;
 import com.lapczynski.commander.domain.remediation.ActionType;
+import com.lapczynski.commander.domain.remediation.ExecutedAction;
 import com.lapczynski.commander.domain.remediation.ProposedAction;
 import com.lapczynski.commander.domain.remediation.ResourceRef;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -50,6 +54,8 @@ public class RemediationTool {
   private final IdempotencyStore idempotency;
   private final Map<String, String> targetTags;
   private final RemediationExecutor executor;
+  private final Optional<ExecutionJournal> journal;
+  private final Clock clock;
 
   /** Performs the action for real. Supplied so the demo, tests and AWS can differ. */
   @FunctionalInterface
@@ -65,10 +71,27 @@ public class RemediationTool {
       IdempotencyStore idempotency,
       Map<String, String> targetTags,
       RemediationExecutor executor) {
+    this(policyEngine, idempotency, targetTags, executor, null, Clock.systemUTC());
+  }
+
+  /**
+   * @param journal records what was done, for the incident report. Optional because the tool must
+   *     work in tests and demos that have no database; a missing journal costs a report section,
+   *     never a safety property.
+   */
+  public RemediationTool(
+      PolicyEngine policyEngine,
+      IdempotencyStore idempotency,
+      Map<String, String> targetTags,
+      RemediationExecutor executor,
+      ExecutionJournal journal,
+      Clock clock) {
     this.policyEngine = policyEngine;
     this.idempotency = idempotency;
     this.targetTags = Map.copyOf(targetTags);
     this.executor = executor;
+    this.journal = Optional.ofNullable(journal);
+    this.clock = clock;
   }
 
   /**
@@ -168,6 +191,7 @@ public class RemediationTool {
 
     // --- 3. Execute, or simulate ------------------------------------------------------------
     boolean dryRun = policyEngine.isDryRun();
+    Instant startedAt = clock.instant();
     try {
       String detail =
           dryRun
@@ -177,6 +201,17 @@ public class RemediationTool {
 
       idempotency.complete(
           fingerprint, IdempotencyStore.Outcome.SUCCEEDED, "{\"detail\":\"%s\"}".formatted(detail));
+
+      journal.ifPresent(
+          j ->
+              j.record(
+                  incident,
+                  fingerprint,
+                  action,
+                  dryRun,
+                  ExecutedAction.Outcome.SUCCEEDED,
+                  detail,
+                  startedAt));
 
       log.info(
           "Remediation executed: action={} target={} dryRun={} fingerprint={}",
@@ -203,6 +238,19 @@ public class RemediationTool {
           fingerprint,
           IdempotencyStore.Outcome.FAILED,
           "{\"error\":\"%s\"}".formatted(String.valueOf(e.getMessage())));
+
+      // Recorded as prominently as a success. A failed action whose effect is unknown is the one
+      // an operator most needs to find in the report.
+      journal.ifPresent(
+          j ->
+              j.record(
+                  incident,
+                  fingerprint,
+                  action,
+                  dryRun,
+                  ExecutedAction.Outcome.FAILED,
+                  String.valueOf(e.getMessage()),
+                  startedAt));
 
       log.error(
           "Remediation failed: action={} target={} error={}",

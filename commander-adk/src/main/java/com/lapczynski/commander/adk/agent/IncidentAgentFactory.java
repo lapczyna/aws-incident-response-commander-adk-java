@@ -9,6 +9,7 @@ import com.google.adk.models.BaseLlm;
 import com.google.adk.tools.FunctionTool;
 import com.lapczynski.commander.adk.tools.ChangeTools;
 import com.lapczynski.commander.adk.tools.InvestigationTools;
+import com.lapczynski.commander.application.verification.RecoveryVerifier;
 import com.lapczynski.commander.domain.policy.PolicyEngine;
 import io.reactivex.rxjava3.core.Scheduler;
 import java.util.List;
@@ -220,6 +221,27 @@ public final class IncidentAgentFactory {
             DiagnosisAgents.refinementLoop(model),
             DiagnosisAgents.remediationPlanner(model),
             new PolicyGateAgent(policyEngine, targetTags))
+        .build();
+  }
+
+  /**
+   * The closing pipeline: measure recovery, then describe it.
+   *
+   * <p>Order is the point again. The verdict is reached by {@link RecoveryVerifierAgent} — code,
+   * comparing numbers — and only then is a model asked to write about it. Reversing the two would
+   * let a narrative that reads like success be written before anyone checked, and the narrative is
+   * what a human actually reads.
+   *
+   * <p>The narrator is given the verdict in session state and instructed not to restate it. The
+   * report renderer prints the measured result separately regardless, so a narrative that
+   * contradicted it would be visibly contradicting the numbers printed beside it.
+   */
+  public static SequentialAgent verificationPipeline(BaseLlm model, RecoveryVerifier verifier) {
+    return SequentialAgent.builder()
+        .name("incident_closure")
+        .description(
+            "Measures whether the symptom went away, then writes the narrative for the report.")
+        .subAgents(new RecoveryVerifierAgent(verifier), ReportAgents.narrator(model))
         .build();
   }
 

@@ -14,6 +14,7 @@ accepted. Records are immutable once accepted; a reversal is a new ADR that supe
 | [0007](0007-durable-approval-binding.md) | Approval bound to a canonical action fingerprint, re-checked at execution | Accepted | Structurally prevents replay, stale approval and confused-deputy attacks |
 | [0008](0008-rxjava-spring-bridge.md) | One RxJava-to-servlet bridge owning schedulers and MDC propagation | Accepted | ADK is RxJava, Spring is not; correlation IDs must survive the boundary |
 | [0009](0009-junit-golden-scenario-evaluation.md) | JUnit golden-scenario harness driven by a deterministic `FakeLlm` | Accepted | Java ADK has no evaluation framework, and CI cannot call a paid API |
+| [0010](0010-deterministic-recovery-verification.md) | Recovery verified by numeric comparison in Java; reports assembled from stored rows | Accepted | A model asked whether its own fix worked marks its own homework, and unverifiable citations are not citations |
 
 ## Compatibility findings behind these records
 
