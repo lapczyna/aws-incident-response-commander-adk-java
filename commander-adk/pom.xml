@@ -48,5 +48,17 @@
       <groupId>io.micrometer</groupId>
       <artifactId>micrometer-core</artifactId>
     </dependency>
+
+    <!-- The end-to-end investigation test runs real ADK machinery against the simulator. -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>commander-simulator</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>commander-testing</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

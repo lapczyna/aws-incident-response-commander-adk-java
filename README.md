@@ -18,18 +18,18 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 2 of 11 complete** — the durable incident lifecycle plus
-the fault-injectable target service and the deterministic AWS signal simulator.
+Built in phases. Current state: **Phase 3 of 11 complete** — the first real ADK investigation runs
+end to end against the simulator, with durable ADK sessions in PostgreSQL.
 
-`./mvnw verify` runs **198 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **229 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
 | 0 | Architecture and repository foundation | ✅ done |
 | 1 | Domain and durable incident lifecycle | ✅ done |
 | 2 | Fault-injectable service and signal simulator | ✅ done |
-| 3 | First ADK investigation (vertical slice) | next |
-| 4 | Parallel multi-agent investigation | planned |
+| 3 | First ADK investigation (vertical slice) | ✅ done |
+| 4 | Parallel multi-agent investigation | next |
 | 5 | Bounded diagnosis and remediation planning | planned |
 | 6 | Durable approval-gated remediation | planned |
 | 7 | Guarded AWS adapters | planned |
@@ -160,9 +160,12 @@ Set with `--spring.profiles.active=...`. See
 | Profile | What it uses | Cost | Default |
 |---|---|---|---|
 | `gemini` | Gemini Developer API, native ADK integration | Free tier available | recommended |
-| `ollama` | Fully local via Spring AI → ADK `SpringAI` adapter | Free, needs RAM | privacy-first |
-| `bedrock` | Amazon Nova Lite via Bedrock Converse | ~$0.42/month at the documented workload | opt-in, off by default |
+| `ollama` | Fully local via Spring AI → ADK `SpringAI` adapter | Free, needs ~4 GB RAM | privacy-first |
+| `bedrock` | Amazon Nova Lite via Bedrock Converse | ~$0.42/month at the documented workload | opt-in, Phase 7 |
 | `fake` | Deterministic scripted responses | Free | **CI default** |
+
+Full instructions, including how to pick a local model that can actually call tools:
+[docs/model-setup.md](docs/model-setup.md).
 
 > **Data handling.** Gemini **free-tier** prompts may be used to improve Google's products; paid
 > tiers are excluded. Do not send real incident data through the free tier. The `ollama` profile
@@ -200,6 +203,7 @@ Set with `--spring.profiles.active=...`. See
 | [Dependency matrix](docs/dependency-matrix.md) | Every version, resolved by the build and explained |
 | [Schema](docs/schema.md) | Durable state, the constraints that carry weight, and the append-only audit rule |
 | [Simulator & target service](docs/simulator.md) | The eight scenarios, fixture format, and the fault-injection safety model |
+| [Model setup](docs/model-setup.md) | Gemini, Ollama and the fake model; choosing a local model that can actually call tools |
 
 Arriving in later phases: simulator scenario tutorial, Gemini/Ollama/Bedrock setup guides, AWS
 deployment and teardown, cost analysis, threat model, runbook, evaluation guide, troubleshooting and

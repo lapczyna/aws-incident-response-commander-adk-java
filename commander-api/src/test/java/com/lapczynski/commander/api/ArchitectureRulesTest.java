@@ -205,9 +205,7 @@ class ArchitectureRulesTest {
   private static final Set<String> BOOTSTRAP_EMPTY =
       new LinkedHashSet<>(
           Set.of(
-              // Phase 3 introduces the ADK agents.
-              ROOT + ".adk",
-              // Phase 7 brings the AWS adapters.
+              // Phase 7 brings the AWS adapters; the last entry to go.
               ROOT + ".aws"));
 
   @Test

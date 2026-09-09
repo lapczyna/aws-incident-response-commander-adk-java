@@ -98,6 +98,12 @@ the failure appears as an opaque runtime 400 rather than anything at compile tim
 make a test pass for the wrong reason: a test asserting *4xx* will happily accept the 400 caused by
 the missing flag.
 
+## Spring AI 2.0 renamed the Ollama options API
+
+`OllamaOptions` became `OllamaChatOptions`, and `OllamaChatModel.Builder.defaultOptions(...)` became
+`options(...)`. Verified against `spring-ai-ollama-2.0.1` on the classpath rather than taken from
+1.x documentation, which is still what most search results return.
+
 ## Jackson 2 and Jackson 3 coexist — by design, not by accident
 
 This surprised me enough to be worth writing down. Spring Boot 4 moved to **Jackson 3**, which

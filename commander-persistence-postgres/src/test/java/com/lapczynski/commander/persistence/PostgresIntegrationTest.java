@@ -20,10 +20,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
  */
 @SpringBootTest(classes = PersistenceTestApplication.class)
 @Tag("integration")
-abstract class PostgresIntegrationTest {
+public abstract class PostgresIntegrationTest {
 
   @SuppressWarnings("resource") // Closed by the Testcontainers JVM shutdown hook.
-  static final PostgreSQLContainer<?> POSTGRES =
+  protected static final PostgreSQLContainer<?> POSTGRES =
       new PostgreSQLContainer<>("postgres:17-alpine")
           .withDatabaseName("commander")
           .withUsername("commander")
@@ -48,7 +48,7 @@ abstract class PostgresIntegrationTest {
    * refused - silently the wrong shape, loudly the wrong result. A {@code DO} block is one
    * transaction, so {@code set_config(..., is_local => true)} covers the delete.
    */
-  static void truncateIncidents(JdbcClient jdbc) {
+  protected static void truncateIncidents(JdbcClient jdbc) {
     jdbc.sql(
             """
             DO $$
