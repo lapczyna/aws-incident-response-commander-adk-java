@@ -1,0 +1,59 @@
+# ---- Build output ----
+target/
+build/
+*.class
+*.jar
+*.war
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+nbproject/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Secrets: never commit anything below. Enforced by gitleaks in CI. ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+credentials
+aws-credentials*
+**/application-local.yml
+**/application-secrets.yml
+
+# ---- Terraform: state contains secrets in plaintext ----
+infra/terraform/**/.terraform/
+infra/terraform/**/.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+tfplan
+*.tfplan
+
+# ---- Logs and local runtime scratch ----
+logs/
+*.log
+!scripts/**/*.log.example
+.scratch/

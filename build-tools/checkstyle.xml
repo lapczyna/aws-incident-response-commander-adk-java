@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  Deliberately lean. Spotless + google-java-format already owns layout, so Checkstyle here only
+  catches things a formatter cannot: real defect patterns and the project's safety conventions.
+-->
+<module name="Checker">
+  <property name="severity" value="warning"/>
+  <property name="fileExtensions" value="java"/>
+
+  <module name="FileTabCharacter"/>
+  <module name="NewlineAtEndOfFile"/>
+
+  <!-- No stray printf debugging in a service that must produce structured JSON logs. -->
+  <module name="RegexpSingleline">
+    <property name="format" value="System\.(out|err)\.print"/>
+    <property name="message" value="Use a SLF4J logger; this project emits structured JSON logs."/>
+  </module>
+  <!-- printStackTrace loses the correlation IDs that make an incident traceable. -->
+  <module name="RegexpSingleline">
+    <property name="format" value="\.printStackTrace\(\)"/>
+    <property name="message" value="Log the throwable through SLF4J instead of printStackTrace()."/>
+  </module>
+
+  <module name="TreeWalker">
+    <module name="SuppressionCommentFilter"/>
+
+    <!-- Imports -->
+    <module name="UnusedImports"/>
+    <module name="RedundantImport"/>
+    <module name="AvoidStarImport"/>
+    <module name="IllegalImport">
+      <!-- Force java.time everywhere: incident timelines must not depend on a mutable clock. -->
+      <property name="illegalPkgs" value="java.util.Date, java.util.Calendar, sun, com.sun"/>
+    </module>
+
+    <!-- Defect patterns -->
+    <module name="EqualsHashCode"/>
+    <module name="CovariantEquals"/>
+    <module name="StringLiteralEquality"/>
+    <module name="NoFinalizer"/>
+    <module name="MissingSwitchDefault"/>
+    <module name="FallThrough"/>
+    <module name="SimplifyBooleanExpression"/>
+    <module name="SimplifyBooleanReturn"/>
+    <module name="EmptyStatement"/>
+    <module name="DefaultComesLast"/>
+    <module name="MultipleVariableDeclarations"/>
+    <module name="OneStatementPerLine"/>
+    <module name="UnnecessarySemicolonAfterTypeMemberDeclaration"/>
+
+    <!-- Empty catch blocks hide the tool failures the investigation is supposed to report. -->
+    <module name="EmptyCatchBlock">
+      <property name="exceptionVariableName" value="expected|ignored"/>
+    </module>
+
+    <!-- Naming -->
+    <module name="PackageName">
+      <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+    </module>
+    <module name="TypeName"/>
+    <module name="MethodName"/>
+    <module name="ConstantName"/>
+    <module name="LocalVariableName"/>
+    <module name="ParameterName"/>
+
+    <!-- Structure -->
+    <module name="NeedBraces"/>
+    <module name="LeftCurly"/>
+    <module name="RightCurly"/>
+    <module name="ArrayTypeStyle"/>
+    <module name="UpperEll"/>
+    <module name="ModifierOrder"/>
+  </module>
+</module>
