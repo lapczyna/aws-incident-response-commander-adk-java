@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 4 of 11 complete** — four specialists investigate
-concurrently and a synthesis stage reconciles their findings, including their disagreements.
+Built in phases. Current state: **Phase 5 of 11 complete** — a bounded critique loop refines the
+hypothesis, and a deterministic policy gate with no model in it decides whether anything may run.
 
-`./mvnw verify` runs **239 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **272 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -30,8 +30,8 @@ concurrently and a synthesis stage reconciles their findings, including their di
 | 2 | Fault-injectable service and signal simulator | ✅ done |
 | 3 | First ADK investigation (vertical slice) | ✅ done |
 | 4 | Parallel multi-agent investigation | ✅ done |
-| 5 | Bounded diagnosis and remediation planning | next |
-| 6 | Durable approval-gated remediation | planned |
+| 5 | Bounded diagnosis and remediation planning | ✅ done |
+| 6 | Durable approval-gated remediation | next |
 | 7 | Guarded AWS adapters | planned |
 | 8 | Recovery verification and reporting | planned |
 | 9 | Evaluation, security and observability | planned |
@@ -48,8 +48,8 @@ This project exists partly to be read. Each ADK concept below maps to a specific
 |---|---|---|
 | `SequentialAgent` | `commander-adk` — `IncidentAgentFactory` | Ordered incident stages |
 | `ParallelAgent` | same | Four investigators run concurrently |
-| `LoopAgent` + `ExitLoopTool` | same | Hypothesis → critique → refine, `maxIterations = 3` |
-| Custom `BaseAgent` | `PolicyGateAgent` | A deterministic stage with no model call at all |
+| `LoopAgent` + `ExitLoopTool` | `DiagnosisAgents` | Hypothesis → critique → refine, `maxIterations = 3` |
+| Custom `BaseAgent` | `PolicyGateAgent` | A deterministic stage with no model at all, guarding its sub-agents |
 | `LlmAgent.outputKey` | all specialists | Typed hand-off through session state |
 | Callbacks | `commander-adk` | Budgets, deadlines, partial-failure handling |
 | `BasePlugin` | `BudgetPlugin`, cost telemetry | Token, request and cost accounting |

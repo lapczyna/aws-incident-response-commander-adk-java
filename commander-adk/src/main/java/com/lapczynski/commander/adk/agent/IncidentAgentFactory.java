@@ -9,8 +9,10 @@ import com.google.adk.models.BaseLlm;
 import com.google.adk.tools.FunctionTool;
 import com.lapczynski.commander.adk.tools.ChangeTools;
 import com.lapczynski.commander.adk.tools.InvestigationTools;
+import com.lapczynski.commander.domain.policy.PolicyEngine;
 import io.reactivex.rxjava3.core.Scheduler;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds the agent topology.
@@ -181,6 +183,43 @@ public final class IncidentAgentFactory {
         .name("incident_investigation")
         .description("Gathers evidence in parallel, then reconciles it.")
         .subAgents(evidenceCollection(model, tools, changeTools, scheduler), synthesis(model))
+        .build();
+  }
+
+  /**
+   * The full diagnosis pipeline: gather, hypothesise under critique, propose, then gate.
+   *
+   * <p>The ordering is the safety property. Evidence is complete before a hypothesis is formed, the
+   * hypothesis is attacked before a proposal is built on it, and the proposal is evaluated by code
+   * before any stage that could act on it. Because this is a {@link SequentialAgent}, that ordering
+   * is a fact about the program rather than something a model decides each run (ADR-0003).
+   *
+   * <p>Note that the gate is last here only because Phase 5 has nothing to guard yet. From Phase 6
+   * the executor becomes a <em>sub-agent</em> of the gate rather than a stage after it — see {@link
+   * PolicyGateAgent}, which explains why a signal-based denial would not have held.
+   *
+   * @param targetTags tags read from the target resource, passed to the policy gate. Supplied by
+   *     the caller from AWS or the simulator - never from the model, which could otherwise assert
+   *     its way past the tag requirement.
+   */
+  public static SequentialAgent diagnosisPipeline(
+      BaseLlm model,
+      InvestigationTools tools,
+      ChangeTools changeTools,
+      PolicyEngine policyEngine,
+      Map<String, String> targetTags,
+      Scheduler scheduler) {
+
+    return SequentialAgent.builder()
+        .name("incident_diagnosis")
+        .description(
+            "Collects evidence concurrently, refines a hypothesis under critique, proposes a "
+                + "remediation, and submits it to the deterministic policy gate.")
+        .subAgents(
+            evidenceCollection(model, tools, changeTools, scheduler),
+            DiagnosisAgents.refinementLoop(model),
+            DiagnosisAgents.remediationPlanner(model),
+            new PolicyGateAgent(policyEngine, targetTags))
         .build();
   }
 

@@ -70,6 +70,36 @@ write prose**. It may never decide *what happens next* or *whether an action is 
   specialists and the hypothesis stage is a set of string keys. Typed records are parsed at the
   boundary in Phase 4 to keep that honest.
 
+## Addendum (Phase 5): the policy gate guards its sub-agents rather than signalling a stop
+
+Implementing the gate turned up something that would have been a real hole.
+
+The obvious way for a stage to stop a pipeline is to emit an event with
+`EventActions.endInvocation(true)`. It reads like the right mechanism and it does nothing here.
+`SequentialAgent.runAsyncImpl` never consults that flag between sub-agents, and
+`InvocationContext.setEndInvocation` only mutates the child context the gate itself was handed —
+each sibling builds its own child from the *unchanged* parent. A denial expressed either way is
+silently ignored, and the executor runs anyway. The failure is invisible: the gate logs a refusal,
+the audit trail records a denial, and the action still happens.
+
+The fix is to stop signalling and start structuring. The stages a denial must prevent are the
+gate's **sub-agents**, not its siblings:
+
+```java
+new PolicyGateAgent(policyEngine, targetTags, List.of(remediationExecutor))
+```
+
+On ALLOW the gate runs what it guards; on DENY it returns the decision event and nothing else.
+"Nothing runs unless policy allowed it" is then a property of the object graph, not of a signal that
+has to be honoured by code this project does not own. `PolicyGateTest` asserts it by placing a
+marker stage inside the gate and checking it never ran.
+
+This is a good illustration of why the compatibility work in Phase 0 was worth doing but not
+sufficient: reading the source told us `endInvocation` exists; only building on it revealed which
+agent types actually honour it.
+
+---
+
 **Deviation from the specification.** The spec listed `IncidentCoordinatorAgent` among the agents.
 It exists here as a composed `SequentialAgent` plus the Java factory that builds it, rather than as
 an `LlmAgent`. The semantics the spec asked for are preserved; the LLM's authority over sequencing
