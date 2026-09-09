@@ -73,6 +73,10 @@ graph TB
 
 ## 2. Agent topology
 
+**Implemented as of Phase 4:** intake alert → four specialists in parallel → synthesis. The
+hypothesis loop, policy gate and approval stages are drawn below as the target shape; they arrive in
+Phases 5 and 6.
+
 Deterministic stages are square; LLM stages are rounded. Note that the coordinator and the policy
 gate are both plain Java — the model never decides what happens next. See ADR-0003.
 

@@ -58,10 +58,23 @@ public final class FakeLlm extends BaseLlm {
   private final List<LlmRequest> received = new CopyOnWriteArrayList<>();
   private final String fallbackText;
 
-  private FakeLlm(String modelName, List<Turn> turns, String fallbackText) {
+  /**
+   * When set, replaces the ordered script with a rule: call each offered tool exactly once, then
+   * summarise.
+   *
+   * <p>Needed for parallel tests. Four specialists sharing one fake consume a single ordered script
+   * in whatever order the scheduler happens to run them, so a positional script makes assertions
+   * depend on thread timing. Deciding from the request instead is order-independent, and it also
+   * models what an agent actually does: call its tools, then report.
+   */
+  private final String autonomousSummary;
+
+  private FakeLlm(
+      String modelName, List<Turn> turns, String fallbackText, String autonomousSummary) {
     super(modelName);
     this.script.addAll(turns);
     this.fallbackText = fallbackText;
+    this.autonomousSummary = autonomousSummary;
   }
 
   public static Builder builder() {
@@ -79,6 +92,10 @@ public final class FakeLlm extends BaseLlm {
   public Flowable<LlmResponse> generateContent(LlmRequest llmRequest, boolean stream) {
     received.add(llmRequest);
 
+    if (autonomousSummary != null) {
+      return Flowable.just(autonomousTurn(llmRequest));
+    }
+
     Turn turn = script.poll();
     if (turn == null) {
       // Running past the end of a script is a test authoring mistake, not a model failure, but
@@ -92,6 +109,56 @@ public final class FakeLlm extends BaseLlm {
           case Turn.Text text -> textResponse(text.text());
           case Turn.ToolCall call -> toolCallResponse(call);
         });
+  }
+
+  /**
+   * Picks the first offered tool that has not yet produced a response in this conversation.
+   *
+   * <p>Reads the conversation rather than counting calls, so it behaves correctly no matter how the
+   * scheduler interleaves parallel agents.
+   */
+  private LlmResponse autonomousTurn(LlmRequest llmRequest) {
+    java.util.Set<String> alreadyCalled = new java.util.HashSet<>();
+    llmRequest
+        .contents()
+        .forEach(
+            content ->
+                content
+                    .parts()
+                    .ifPresent(
+                        parts ->
+                            parts.forEach(
+                                part ->
+                                    part.functionResponse()
+                                        .flatMap(response -> response.name())
+                                        .ifPresent(alreadyCalled::add))));
+
+    for (String toolName : llmRequest.tools().keySet()) {
+      if (!alreadyCalled.contains(toolName)) {
+        return toolCallResponse(new Turn.ToolCall(toolName, defaultArgsFor(toolName)));
+      }
+    }
+    return textResponse(autonomousSummary);
+  }
+
+  /**
+   * Plausible arguments for the project's tools.
+   *
+   * <p>Every tool here takes a service name and optional narrowing parameters, so a small map
+   * covers all of them. A fake that guessed argument names would fail schema validation and look
+   * like a framework problem.
+   */
+  private static Map<String, Object> defaultArgsFor(String toolName) {
+    Map<String, Object> args = new java.util.LinkedHashMap<>();
+    args.put("serviceName", "checkout");
+    switch (toolName) {
+      case "queryServiceMetric" -> args.put("metricName", "TargetResponseTimeP99");
+      case "queryServiceLogs" -> args.put("pattern", "error|exception|timeout|failed");
+      default -> {
+        // The remaining tools need only the service name.
+      }
+    }
+    return args;
   }
 
   @Override
@@ -187,6 +254,7 @@ public final class FakeLlm extends BaseLlm {
     private String model = "fake-model";
     private final List<Turn> turns = new ArrayList<>();
     private String fallback = "[FakeLlm: script exhausted]";
+    private String autonomousSummary;
 
     public Builder model(String model) {
       this.model = model;
@@ -205,6 +273,17 @@ public final class FakeLlm extends BaseLlm {
       return this;
     }
 
+    /**
+     * Calls every tool the agent offers, exactly once, then returns {@code summary}.
+     *
+     * <p>Order-independent, so it works for agents running in parallel. Use it when the point of a
+     * test is that tools were exercised rather than that a particular sequence occurred.
+     */
+    public Builder callsEachOfferedToolOnceThenSays(String summary) {
+      this.autonomousSummary = summary;
+      return this;
+    }
+
     /** Returned once the script runs out. */
     public Builder fallback(String text) {
       this.fallback = text;
@@ -212,7 +291,7 @@ public final class FakeLlm extends BaseLlm {
     }
 
     public FakeLlm build() {
-      return new FakeLlm(model, turns, fallback);
+      return new FakeLlm(model, turns, fallback, autonomousSummary);
     }
   }
 }

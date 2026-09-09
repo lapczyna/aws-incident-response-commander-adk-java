@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 3 of 11 complete** — the first real ADK investigation runs
-end to end against the simulator, with durable ADK sessions in PostgreSQL.
+Built in phases. Current state: **Phase 4 of 11 complete** — four specialists investigate
+concurrently and a synthesis stage reconciles their findings, including their disagreements.
 
-`./mvnw verify` runs **229 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **239 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -29,8 +29,8 @@ end to end against the simulator, with durable ADK sessions in PostgreSQL.
 | 1 | Domain and durable incident lifecycle | ✅ done |
 | 2 | Fault-injectable service and signal simulator | ✅ done |
 | 3 | First ADK investigation (vertical slice) | ✅ done |
-| 4 | Parallel multi-agent investigation | next |
-| 5 | Bounded diagnosis and remediation planning | planned |
+| 4 | Parallel multi-agent investigation | ✅ done |
+| 5 | Bounded diagnosis and remediation planning | next |
 | 6 | Durable approval-gated remediation | planned |
 | 7 | Guarded AWS adapters | planned |
 | 8 | Recovery verification and reporting | planned |

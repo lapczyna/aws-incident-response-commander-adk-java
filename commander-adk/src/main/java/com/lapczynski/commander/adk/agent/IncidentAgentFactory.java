@@ -1,20 +1,28 @@
 package com.lapczynski.commander.adk.agent;
 
 import com.google.adk.agents.LlmAgent;
+import com.google.adk.agents.ParallelAgent;
+import com.google.adk.agents.SequentialAgent;
 import com.google.adk.apps.App;
 import com.google.adk.apps.ResumabilityConfig;
 import com.google.adk.models.BaseLlm;
 import com.google.adk.tools.FunctionTool;
+import com.lapczynski.commander.adk.tools.ChangeTools;
 import com.lapczynski.commander.adk.tools.InvestigationTools;
+import io.reactivex.rxjava3.core.Scheduler;
 import java.util.List;
 
 /**
  * Builds the agent topology.
  *
- * <p>Phase 3 delivers a single investigator: one {@link LlmAgent} with the read-only tools. Phase 4
- * replaces it with the parallel specialists, and Phase 5 wraps those in the bounded hypothesis
- * loop. The composition lives here so those changes stay in one file rather than spreading through
- * the application.
+ * <p>Phase 4 runs four specialists concurrently inside a {@link ParallelAgent}, then synthesises
+ * their findings in a {@link SequentialAgent}. Phase 5 will insert the bounded hypothesis loop
+ * between them. The composition lives here so those changes stay in one file rather than spreading
+ * through the application.
+ *
+ * <p>The single-agent {@link #investigator} from Phase 3 is retained: it is the simplest thing that
+ * exercises the ADK wiring, which makes it the right shape for the tests that check the plumbing
+ * rather than the topology.
  */
 public final class IncidentAgentFactory {
 
@@ -92,6 +100,87 @@ public final class IncidentAgentFactory {
             Finish with a short structured summary: what is happening, when it started, what the \
             evidence supports as the likely cause, your confidence, and what evidence is missing.
             """)
+        .build();
+  }
+
+  /**
+   * Runs the four evidence specialists concurrently.
+   *
+   * <p>Each writes to its own session-state key, so their results do not collide despite running at
+   * the same time. ADK gives each sub-agent its own branch, which keeps their events
+   * distinguishable in the trail.
+   *
+   * @param scheduler the scheduler the sub-agents run on. Supplied rather than defaulted because
+   *     these agents perform blocking JDBC and HTTP work; leaving them on RxJava's computation
+   *     scheduler — sized to the CPU count — would let four blocked investigations starve the pool.
+   */
+  public static ParallelAgent evidenceCollection(
+      BaseLlm model, InvestigationTools tools, ChangeTools changeTools, Scheduler scheduler) {
+    return ParallelAgent.builder()
+        .name("evidence_collection")
+        .description("Collects metric, log, ECS and change evidence concurrently.")
+        .scheduler(scheduler)
+        .subAgents(
+            SpecialistAgents.metricsInvestigator(model, tools),
+            SpecialistAgents.logsInvestigator(model, tools),
+            SpecialistAgents.ecsInvestigator(model, tools),
+            SpecialistAgents.changeInvestigator(model, changeTools))
+        .build();
+  }
+
+  /**
+   * Reconciles the four specialist findings into one account.
+   *
+   * <p>Has no tools at all, deliberately. Its inputs are the four {@code outputKey} values already
+   * in session state, and giving it the ability to gather more evidence would let it paper over a
+   * contradiction with a fresh query instead of reporting it — which is the one thing this stage
+   * exists to do.
+   */
+  public static LlmAgent synthesis(BaseLlm model) {
+    return LlmAgent.builder()
+        .name("evidence_synthesis")
+        .description("Reconciles the specialists' findings into a single account of the incident.")
+        .model(model)
+        .maxSteps(2)
+        .outputKey("investigation_summary")
+        .instruction(
+            """
+            You are the lead investigator. Four specialists have reported independently and their             findings are in session state:
+
+            - {evidence_metrics}
+            - {evidence_logs}
+            - {evidence_ecs}
+            - {evidence_changes}
+
+            Reconcile them into one account. You have no tools; work only from what they reported.
+
+            Your job is chiefly to notice things no single specialist could:
+
+            - Where two findings CORROBORATE each other, say so. A latency step at the same moment               as a deployment is much stronger evidence than either alone.
+            - Where two findings CONTRADICT each other, report the contradiction plainly and do               NOT pick the tidier story. Metrics showing a normal error rate while logs show a               flood of 500s is a real and important finding: it means one of the two signals is               not telling the truth, and saying which would require evidence you do not have.
+            - Where a specialist reported MISSING evidence, carry that into your conclusion. A               cause supported by three sources with the fourth unavailable is weaker than one               supported by four, and your confidence must reflect that.
+
+            Then state, briefly:
+            1. What is happening, and since when.
+            2. The most likely cause the evidence supports, with the specific findings supporting                it. If the evidence does not identify one, say exactly that - it is a correct and                useful answer, and inventing a plausible cause to have something to report is not.
+            3. Your confidence as high, medium or low, and why.
+            4. What evidence is missing or contradictory.
+            """)
+        .build();
+  }
+
+  /**
+   * The full Phase 4 pipeline: gather concurrently, then synthesise.
+   *
+   * <p>A {@link SequentialAgent} rather than an LLM coordinator, so stage order is a property of
+   * the code. See ADR-0003.
+   */
+  public static SequentialAgent investigationPipeline(
+      BaseLlm model, InvestigationTools tools, ChangeTools changeTools, Scheduler scheduler) {
+    return SequentialAgent.builder()
+        .name("incident_investigation")
+        .description("Gathers evidence in parallel, then reconciles it.")
+        .subAgents(evidenceCollection(model, tools, changeTools, scheduler), synthesis(model))
         .build();
   }
 
