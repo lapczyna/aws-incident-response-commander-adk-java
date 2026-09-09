@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Structured logging.
+
+  JSON in every profile but `local`, because these logs are read by a query engine far more often
+  than by a person, and a correlation id that has to be extracted from a message with a regex is one
+  that nobody correlates on.
+
+  What is deliberately NOT logged: prompts, model responses, and evidence content. All three are
+  untrusted operational data, and a log pipeline is a place where such content gets forwarded,
+  indexed, and rendered in tools that were not designed with it in mind. Token counts, costs, tool
+  names and outcomes carry what an operator needs to understand a run.
+-->
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+  <springProfile name="local">
+    <!-- Human-readable while developing. The MDC fields are still present, just inline. -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <pattern>%d{HH:mm:ss.SSS} %-5level [%X{incidentId:-}/%X{invocationId:-}] %logger{36} - %msg%n</pattern>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <springProfile name="!local">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <!--
+          Every correlation field the system sets, named explicitly rather than dumping the whole
+          MDC. An explicit list means adding a field is a decision, and it means a stray MDC entry
+          left behind by some library does not silently become part of the log schema.
+        -->
+        <includeMdcKeyName>incidentId</includeMdcKeyName>
+        <includeMdcKeyName>invocationId</includeMdcKeyName>
+        <includeMdcKeyName>sessionId</includeMdcKeyName>
+        <includeMdcKeyName>agent</includeMdcKeyName>
+        <includeMdcKeyName>tool</includeMdcKeyName>
+        <includeMdcKeyName>approvalId</includeMdcKeyName>
+        <includeMdcKeyName>traceId</includeMdcKeyName>
+        <includeMdcKeyName>spanId</includeMdcKeyName>
+
+        <customFields>{"application":"incident-commander"}</customFields>
+
+        <!-- Bounded. A stack trace from a deeply nested RxJava chain is thousands of frames, and
+             an unbounded one turns a single failure into a log-ingestion incident. -->
+        <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+          <maxDepthPerThrowable>40</maxDepthPerThrowable>
+          <maxLength>8192</maxLength>
+          <rootCauseFirst>true</rootCauseFirst>
+          <exclude>^io\.reactivex\.rxjava3\.internal\..*</exclude>
+        </throwableConverter>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+</configuration>

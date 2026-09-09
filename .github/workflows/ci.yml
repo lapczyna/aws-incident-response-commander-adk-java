@@ -1,0 +1,116 @@
+name: CI
+
+# The whole point of this workflow is that it needs nothing secret. No model API key, no AWS
+# credentials, no registry login. If a change makes CI require a secret, that change has moved a
+# test out of the deterministic tier and into the paid one, and it should be tagged and excluded
+# instead.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+
+      # Testcontainers needs a Docker daemon; ubuntu-latest ships one. The tests that need it are
+      # the persistence integration tests, which run against real PostgreSQL because the schema
+      # uses partial indexes, arrays and a plpgsql trigger that no in-memory substitute reproduces.
+      - name: Verify
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify
+        env:
+          # Named explicitly and left empty. A green build here is evidence that the default
+          # profile reaches no paid provider, rather than evidence that a key happened to be absent.
+          GEMINI_API_KEY: ''
+          AWS_ACCESS_KEY_ID: ''
+          AWS_SECRET_ACCESS_KEY: ''
+
+      - name: Publish test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/*-reports/'
+          retention-days: 7
+          if-no-files-found: ignore
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: a secret committed and then removed is still a leaked secret, and
+          # scanning only the tip would report the repository as clean.
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+
+  dependencies:
+    name: Dependency scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+
+      # Scan what actually ships, not what the POMs declare. Resolving first means a vulnerable
+      # transitive dependency pulled in by a BOM is visible.
+      - name: Resolve dependencies
+        run: ./mvnw --batch-mode --no-transfer-progress -DskipTests dependency:go-offline
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          # Report rather than block, for now. A scanner that fails the build on a transitive CVE
+          # with no available fix trains people to bypass it, which is worse than a report nobody
+          # can ignore because it lands in the security tab.
+          exit-code: '0'
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif

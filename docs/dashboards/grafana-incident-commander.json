@@ -1,0 +1,203 @@
+{
+  "__comment": "Grafana dashboard for the Incident Commander. Import against a Prometheus datasource scraping /actuator/prometheus. The panels are ordered by the question an operator asks first: is it spending money, is it being refused, and is it telling the truth about recoveries. Panel descriptions say what a bad value means, because a number with no interpretation is a number nobody acts on.",
+  "title": "AWS Incident Response Commander",
+  "uid": "incident-commander",
+  "tags": ["incident-commander", "adk"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Cost",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Model spend this month (USD)",
+      "description": "Against the configured monthly budget. The CostGuard fails closed, so this reaching the limit stops model calls rather than producing a larger bill. Bounds LLM usage only; it says nothing about what the surrounding AWS infrastructure costs.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 9 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(commander_model_cost_usd_total[30d]))",
+          "legendFormat": "spent"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Model calls refused for budget",
+      "description": "Non-zero means the monthly ceiling has been reached and investigations are now running without a model. Not an error condition — it is the guard working — but it is the point at which conclusions stop being produced.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum by (agent) (rate(commander_model_refused_total[5m]))",
+          "legendFormat": "{{agent}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Tokens by direction",
+      "description": "Input dominating by orders of magnitude is expected: an investigation sends evidence and receives a paragraph. A sudden rise in input with flat output usually means evidence is no longer being truncated.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum by (direction) (rate(commander_model_tokens_total[5m]))",
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Safety",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Policy decisions",
+      "description": "The most important panel here. A sustained rise in denials is either a misconfigured allowlist or something proposing actions it should not be — and the two are told apart by which rules appear in the audit log, not by this graph.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (decision) (rate(commander_policy_decisions_total[5m]))",
+          "legendFormat": "{{decision}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Approval outcomes",
+      "description": "Refusals are broken out by reason. STALE and EXPIRED are routine. NOT_AUTHORISED is not: it means someone attempted a decision they do not have the standing to make, and every occurrence is in the security-relevant audit trail.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(commander_approval_decisions_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Model calls with no reported token usage",
+      "description": "Expected to be the total call count on the fake and Ollama profiles, which genuinely report none. Non-zero on a paid profile means spend is going untracked and the budget is not being enforced on those calls.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(commander_model_calls_untracked_total)",
+          "legendFormat": "untracked"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Investigation",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Stage latency (p95)",
+      "description": "Per agent. The parallel evidence stage should be roughly the slowest specialist, not their sum; if it approaches the sum, the specialists have stopped running concurrently.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 16 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, agent) (rate(commander_agent_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{agent}}"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Tool outcomes",
+      "description": "Split by the tool's own reported status. 'unavailable' is a recorded evidence gap, not a crash: the investigation continued without that source, and any conclusion drawn during that window is weaker than it looks.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum by (tool, status) (rate(commander_tool_calls_total[5m]))",
+          "legendFormat": "{{tool}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Outcomes",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Recovery verification outcomes",
+      "description": "Only RECOVERED resolves an incident. INDETERMINATE means the metric could not be read, which is neither success nor failure — a rise in it is a monitoring problem, not a remediation problem, and reading it as either would be the mistake the four-valued outcome exists to prevent.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(commander_verification_outcomes_total[1h]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Time awaiting a human decision (p95)",
+      "description": "Measured from approval request to decision. Approvals expire, so a p95 approaching the configured expiry window means decisions are routinely arriving too late to be usable.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(commander_approval_wait_seconds_bucket[1h])))",
+          "legendFormat": "p95 wait"
+        }
+      ]
+    }
+  ]
+}

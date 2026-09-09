@@ -16,6 +16,19 @@ public interface IncidentRepository {
   Optional<Incident> findById(IncidentId id);
 
   /**
+   * Who opened the incident.
+   *
+   * <p>Read back so separation of duties can be enforced: the person who raised an incident must
+   * not be the one who approves acting on it. The opener is recorded on the first status
+   * transition, and without a way to read it the rule can only be documented, not applied.
+   *
+   * <p>Empty when the incident exists but has no recorded opening transition, which should not
+   * happen and is treated by callers as "cannot establish who opened this" rather than as "nobody
+   * did".
+   */
+  Optional<Actor> openedBy(IncidentId id);
+
+  /**
    * Persists a transitioned incident, recording the transition in the incident's history.
    *
    * <p>The update is conditional on the stored version still being {@code expectedVersion}. This is

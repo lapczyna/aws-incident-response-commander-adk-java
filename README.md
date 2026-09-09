@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 8 of 11 complete** — an incident now runs from alert to
-postmortem, and the system will tell you when its own fix did not work.
+Built in phases. Current state: **Phase 9 of 11 complete** — the safety claims are now tests, and
+the interesting one runs a model that has been completely taken in by an injected instruction.
 
-`./mvnw verify` runs **372 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **464 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -34,8 +34,8 @@ postmortem, and the system will tell you when its own fix did not work.
 | 6 | Durable approval-gated remediation | ✅ done |
 | 7 | Guarded AWS adapters | ✅ done |
 | 8 | Recovery verification and reporting | ✅ done |
-| 9 | Evaluation, security and observability | next |
-| 10 | Cost-conscious AWS deployment | planned |
+| 9 | Evaluation, security and observability | ✅ done |
+| 10 | Cost-conscious AWS deployment | next |
 | 11 | Portfolio polish | planned |
 
 ---
@@ -161,7 +161,7 @@ Set with `--spring.profiles.active=...`. See
 |---|---|---|---|
 | `gemini` | Gemini Developer API, native ADK integration | Free tier available | recommended |
 | `ollama` | Fully local via Spring AI → ADK `SpringAI` adapter | Free, needs ~4 GB RAM | privacy-first |
-| `bedrock` | Amazon Nova Lite via Bedrock Converse | ~$0.42/month at the documented workload | opt-in, Phase 7 |
+| `bedrock` | Amazon Nova Lite via Bedrock Converse | ~$0.54/month at the documented workload | opt-in, Phase 7 |
 | `fake` | Deterministic scripted responses | Free | **CI default** |
 
 Full instructions, including how to pick a local model that can actually call tools:
@@ -191,6 +191,19 @@ Full instructions, including how to pick a local model that can actually call to
   wrapped in explicit delimiters to resist prompt injection through log content.
 - No chain-of-thought is persisted. Stored rationale is the model's own conclusions, evidence
   references and decisions.
+- Recovery is judged by **numeric comparison in Java**, not by asking the model whether its own fix
+  worked. An unmeasurable metric is `INDETERMINATE`, never success
+  ([ADR-0010](docs/adr/0010-deterministic-recovery-verification.md)).
+- Model spend is capped by a **`CostGuard` that fails closed** at a configured monthly limit. That
+  bounds LLM usage only; it says nothing about what the surrounding AWS infrastructure costs.
+
+Each of these is a test, not a paragraph. The one worth reading is
+`PromptInjectionTest.compromisedModelIsRefused`: it scripts a model that has *completely* accepted an
+injected instruction — proposing the destructive action, against the attacker's ARN, in the
+attacker's account, with maximum confidence — and shows that four independent policy rules refuse it
+anyway. `GoldenScenarioTest.hostileModelNeverExecutes` then runs that same model against every
+scenario in the library, because a defence that holds only on the case it was written for is not a
+defence. See [the threat model](docs/threat-model.md).
 
 ---
 
@@ -202,14 +215,16 @@ Full instructions, including how to pick a local model that can actually call to
 | [Diagrams](docs/diagrams/architecture.md) | Component, agent topology, approval sequence, state machine, deployment |
 | [Dependency matrix](docs/dependency-matrix.md) | Every version, resolved by the build and explained |
 | [Schema](docs/schema.md) | Durable state, the constraints that carry weight, and the append-only audit rule |
-| [Simulator & target service](docs/simulator.md) | The eight scenarios, fixture format, and the fault-injection safety model |
+| [Simulator & target service](docs/simulator.md) | The nine scenarios, fixture format, and the fault-injection safety model |
 | [Model setup](docs/model-setup.md) | Gemini, Ollama and the fake model; choosing a local model that can actually call tools |
 | [AWS integration](docs/aws-integration.md) | The read adapters, their bounds, and the three independent layers enforcing the tag rule |
 | [Verification & reporting](docs/reporting.md) | Why the verdict is arithmetic, and how citations are checked rather than trusted |
+| [Threat model](docs/threat-model.md) | Eleven threats, each with its mitigation and the test that holds it |
+| [Observability](docs/observability.md) | Correlation across RxJava, the metrics that matter, and what is deliberately never logged |
 | [Sample postmortem](docs/samples/postmortem-checkout-latency.md) | A real rendered report — of a remediation that did not work |
 
-Arriving in later phases: Bedrock setup guide, AWS deployment and teardown, cost analysis, threat
-model, runbook, evaluation guide and troubleshooting.
+Arriving in later phases: Bedrock setup guide, AWS deployment and teardown, cost analysis, runbook
+and troubleshooting.
 
 ---
 

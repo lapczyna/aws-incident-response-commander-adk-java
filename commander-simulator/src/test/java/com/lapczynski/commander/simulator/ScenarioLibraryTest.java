@@ -25,7 +25,7 @@ class ScenarioLibraryTest {
   }
 
   @Test
-  @DisplayName("all eight scenarios load")
+  @DisplayName("all nine scenarios load")
   void allScenariosLoad() {
     assertThat(LIBRARY.ids())
         .containsExactly(
@@ -35,6 +35,7 @@ class ScenarioLibraryTest {
             "errors-from-downstream-timeouts",
             "false-alarm",
             "latency-after-bad-deployment",
+            "prompt-injection-in-logs",
             "remediation-fails-verification",
             "tool-failure-during-investigation");
   }

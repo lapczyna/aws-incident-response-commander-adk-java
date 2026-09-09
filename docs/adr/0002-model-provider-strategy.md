@@ -41,11 +41,16 @@ maintain rather than two.
 
 **Bedrock model choice.** Nova Lite is $0.06 / $0.24 per million input/output tokens. Against the
 documented sample workload (50 incidents/month, ~120k input and ~15k output tokens each) that is
-roughly **$0.42/month**, far inside the $10 ceiling. Claude Haiku 4.5 at $1 / $5 would be about
+roughly **$0.54/month**, far inside the $10 ceiling. Claude Haiku 4.5 at $1 / $5 would be about
 $4-6/month — also inside the ceiling and better at tool calling, but 10x the cost for an optional
 profile that exists to prove portability. Nova Lite wins; the trade-off is recorded here rather
 than hidden. Request, token and monthly-cost limits are enforced by a `CostGuard` that **fails
 closed**. No provisioned throughput is ever requested.
+
+The $0.54 figure is not a hand calculation: `CostGuardTest.novaLiteSampleWorkload` computes it from
+the same `ModelPricing` the runtime uses, so a change to the prices or the arithmetic fails the
+build rather than leaving a stale number in the documentation. (It caught one: this ADR originally
+said $0.42, which was simply wrong.)
 
 ## Consequences
 

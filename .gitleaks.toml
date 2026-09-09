@@ -1,0 +1,37 @@
+# gitleaks configuration.
+#
+# Extends the default ruleset rather than replacing it: the defaults cover the providers that matter
+# here (AWS, Google, Anthropic), and a hand-written ruleset would silently lose coverage as new key
+# formats appear.
+title = "AWS Incident Response Commander"
+
+[extend]
+useDefault = true
+
+# ---------------------------------------------------------------------------------------------
+# Allowlist
+#
+# Every entry is a place where a credential-shaped string is deliberately present, and each is
+# narrow on purpose. An allowlist broad enough to be convenient is one that hides a real leak — so
+# these match specific literals rather than whole files wherever that is possible.
+# ---------------------------------------------------------------------------------------------
+[allowlist]
+description = "Deliberate credential-shaped strings in fixtures, tests and documentation"
+
+regexes = [
+    # 123456789012 is the account id AWS itself uses throughout its documentation. It is not a real
+    # account, and it appears in every scenario fixture and policy test.
+    '''123456789012''',
+    # The fake "other account", used to prove that a cross-account target is refused.
+    '''999999999999''',
+    # Tests assert that a credential-shaped string does NOT reach a prompt. The literal has to
+    # appear in the assertion for the assertion to mean anything.
+    '''aws_secret_access_key''',
+    # The local demo database credentials. They belong to a container that exists only while the
+    # demo is running, and they are in the compose file so that `docker compose up` works with no
+    # setup step. A deployed environment reads its credentials from Secrets Manager instead — see
+    # docs/aws-integration.md. Matched as an exact assignment rather than by allowlisting the whole
+    # file, so a genuine secret added to docker-compose.yml is still reported.
+    '''POSTGRES_PASSWORD: commander''',
+    '''SPRING_DATASOURCE_PASSWORD: commander''',
+]

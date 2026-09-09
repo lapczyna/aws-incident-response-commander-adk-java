@@ -3,6 +3,7 @@ package com.lapczynski.commander.persistence;
 import com.lapczynski.commander.application.port.IncidentRepository;
 import com.lapczynski.commander.application.port.OptimisticLockException;
 import com.lapczynski.commander.domain.approval.Actor;
+import com.lapczynski.commander.domain.approval.ActorRole;
 import com.lapczynski.commander.domain.incident.Incident;
 import com.lapczynski.commander.domain.incident.IncidentId;
 import com.lapczynski.commander.domain.incident.IncidentStatus;
@@ -148,6 +149,30 @@ public class JdbcIncidentRepository implements IncidentRepository {
         .optional()
         .map(IncidentStatus::valueOf)
         .orElse(null);
+  }
+
+  @Override
+  public Optional<Actor> openedBy(IncidentId id) {
+    // The opening transition is the one with no from_status. Ordering by (occurred_at, id) would
+    // also work, but selecting on the null explicitly says what "opened" means rather than relying
+    // on nothing ever being backdated.
+    return jdbc.sql(
+            """
+            SELECT a.id, a.display_name, a.role
+              FROM incident_status_transitions t
+              JOIN actors a ON a.id = t.actor_id
+             WHERE t.incident_id = :incidentId AND t.from_status IS NULL
+             ORDER BY t.id
+             LIMIT 1
+            """)
+        .param("incidentId", id.value())
+        .query(
+            (rs, rowNum) ->
+                new Actor(
+                    rs.getString("id"),
+                    rs.getString("display_name"),
+                    ActorRole.valueOf(rs.getString("role"))))
+        .optional();
   }
 
   private void recordTransition(

@@ -8,6 +8,7 @@ import com.google.genai.types.Content;
 import com.google.genai.types.Part;
 import com.lapczynski.commander.adk.diagnosis.HypothesisParser;
 import com.lapczynski.commander.adk.diagnosis.RemediationProposalParser;
+import com.lapczynski.commander.application.port.SafetyMetrics;
 import com.lapczynski.commander.domain.evidence.Confidence;
 import com.lapczynski.commander.domain.incident.IncidentStatus;
 import com.lapczynski.commander.domain.policy.PolicyDecision;
@@ -59,6 +60,7 @@ public final class PolicyGateAgent extends BaseAgent {
 
   private final PolicyEngine policyEngine;
   private final Map<String, String> targetTags;
+  private final SafetyMetrics metrics;
 
   /**
    * @param targetTags tags read from the target resource. Supplied by the caller from AWS or the
@@ -69,6 +71,18 @@ public final class PolicyGateAgent extends BaseAgent {
    */
   public PolicyGateAgent(
       PolicyEngine policyEngine, Map<String, String> targetTags, List<BaseAgent> guarded) {
+    this(policyEngine, targetTags, guarded, SafetyMetrics.NONE);
+  }
+
+  /**
+   * @param metrics counts verdicts. Never consulted when deciding one: a metrics failure must not
+   *     be able to change whether an action is permitted.
+   */
+  public PolicyGateAgent(
+      PolicyEngine policyEngine,
+      Map<String, String> targetTags,
+      List<BaseAgent> guarded,
+      SafetyMetrics metrics) {
     super(
         "policy_gate",
         "Deterministically decides whether a proposed remediation may proceed. Contains no model.",
@@ -77,6 +91,7 @@ public final class PolicyGateAgent extends BaseAgent {
         List.of());
     this.policyEngine = policyEngine;
     this.targetTags = Map.copyOf(targetTags);
+    this.metrics = metrics;
   }
 
   /** A gate guarding nothing, for evaluating a proposal without a stage to run afterwards. */
@@ -151,6 +166,8 @@ public final class PolicyGateAgent extends BaseAgent {
         allowed.assessedRisk(),
         allowed.approvalRequired());
 
+    metrics.policyDecision("ALLOWED");
+
     Map<String, Object> delta = new LinkedHashMap<>();
     delta.put(KEY_DECISION, "ALLOWED");
     delta.put(KEY_ASSESSED_RISK, allowed.assessedRisk().name());
@@ -171,6 +188,8 @@ public final class PolicyGateAgent extends BaseAgent {
    * after a denial.
    */
   private Event denial(InvocationContext context, String explanation, List<String> rules) {
+    metrics.policyDecision("DENIED");
+
     Map<String, Object> delta = new LinkedHashMap<>();
     delta.put(KEY_DECISION, "DENIED");
     delta.put(KEY_APPROVAL_REQUIRED, false);

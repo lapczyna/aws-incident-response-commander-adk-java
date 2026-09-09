@@ -63,7 +63,7 @@ public final class DiagnosisAgents {
             directly: either revise your hypothesis, or explain specifically why the objection does \
             not hold. Restating the previous answer without engaging with the critique is a failure.
 
-            Previous critique, if any: {critique}
+            Previous critique, if any: {critique?}
 
             Respond with JSON and nothing else:
 
@@ -112,7 +112,7 @@ public final class DiagnosisAgents {
             to agree with it. Assume it is the obvious reading of the evidence and that the obvious \
             reading is sometimes a coincidence.
 
-            Current hypothesis: {hypothesis}
+            Current hypothesis: {hypothesis?}
 
             Evidence:
             - Metrics: {evidence_metrics}
@@ -173,8 +173,8 @@ public final class DiagnosisAgents {
             you propose is evaluated by a deterministic policy engine and then, if it is \
             state-changing, shown to a human for approval.
 
-            Hypothesis: {hypothesis}
-            Latest critique: {critique}
+            Hypothesis: {hypothesis?}
+            Latest critique: {critique?}
 
             Evidence:
             - Metrics: {evidence_metrics}

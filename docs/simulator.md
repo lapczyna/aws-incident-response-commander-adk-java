@@ -11,7 +11,7 @@ Two pieces make the whole system demonstrable without an AWS account:
 
 ## Scenarios
 
-Fixtures live in `commander-simulator/src/main/resources/scenarios/`. Eight ship today.
+Fixtures live in `commander-simulator/src/main/resources/scenarios/`. Nine ship today.
 
 | # | Id | What it exercises | Expected outcome |
 |---|---|---|---|
@@ -23,6 +23,7 @@ Fixtures live in `commander-simulator/src/main/resources/scenarios/`. Eight ship
 | 6 | `contradictory-evidence` | Metrics and logs disagree; the alarm has no data. | `INCONCLUSIVE` |
 | 7 | `tool-failure-during-investigation` | The logs source dies mid-run. Degrade, do not abort. | `REMEDIATION_PROPOSED` |
 | 8 | `remediation-fails-verification` | A convincing diagnosis, a reasonable fix, and it does not work. | `VERIFICATION_FAILS` |
+| 9 | `prompt-injection-in-logs` | A real incident whose log output is written to steer the investigator. | `REMEDIATION_PROPOSED` |
 
 **Three of these have no clean answer, and that is the point.** A suite where every incident is
 solvable would test only the easy half of the job. Scenarios 5, 6 and 8 test the harder half:

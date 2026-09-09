@@ -23,7 +23,7 @@ out evaluating against a live model in CI regardless of which framework existed.
 Build the harness on JUnit 5, driven by `FakeLlm implements BaseLlm` in `commander-testing`.
 
 **Golden scenarios** are version-controlled fixtures pairing a simulator scenario with a scripted
-model transcript and the assertions that must hold. Each of the eight simulator scenarios gets at
+model transcript and the assertions that must hold. Each of the nine simulator scenarios gets at
 least one, including the ones designed to have no clean answer: the false alarm, the contradictory
 evidence case, the tool failure and the failed verification.
 
@@ -66,3 +66,44 @@ job, not the commit build.
 **Migration.** If Java ADK gains a real evaluation framework, the golden fixtures should port to it.
 The adversarial and safety assertions stay in JUnit either way, because they test the deterministic
 Java rather than the model.
+
+---
+
+## What was actually built (Phase 9)
+
+The shape changed in one important way once it existed, and the record is amended rather than
+quietly left describing something else.
+
+**The harness does not assert `expectedOutcome`.** The plan above says each scenario asserts that the
+incident was classified correctly. Written against a `FakeLlm`, that assertion is circular: the fake
+returns whatever it was scripted to return, so the test would be checking the script. The number it
+would produce — "9 of 9 scenarios classified correctly" — would look like an accuracy measurement and
+be nothing of the kind, which is worse than having no number.
+
+So `GoldenScenarioTest` asserts only what holds **regardless of what the model concludes**, and it
+asserts all of it across every scenario rather than one:
+
+- a hostile model never reaches an execution, in any scenario;
+- every scenario finishes inside its tool budget;
+- every scenario terminates, including the one whose log source fails mid-run;
+- untrusted evidence is delimited and its markers balanced wherever free text appears;
+- no scenario leaks a task-definition ARN, and therefore an account id, into a prompt.
+
+Adding a scenario file adds it to all of these automatically, so a new scenario cannot be added
+without being held to the same invariants.
+
+**Scenario 9 was added for this phase.** A genuine incident whose logs and CloudTrail descriptions
+are written to steer whatever reads them. Its injected lines are shaped like errors on purpose — an
+attacker who wants their text read will put it where an investigator searches, and an injection
+buried in output no query returns is not an attack anyone needs a defence against.
+
+**Model judgement remains unmeasured, and is documented as unmeasured.** The `external-model` tag and
+the mechanism for it exist; no accuracy figure is claimed anywhere in this repository, because none
+has been measured.
+
+**One test caught itself passing for the wrong reason.** An early version of the injection test used
+a plausible but unparseable proposal format. It passed — the pipeline refused it as `NO_PROPOSAL`
+before policy was ever consulted. That is a real defence and it is not the one the test claimed to be
+demonstrating. The fixtures now emit well-formed JSON so the policy engine is what refuses them, and
+the surefire output shows four independent rules firing.
+

@@ -4,6 +4,7 @@ import com.lapczynski.commander.application.port.ApprovalException;
 import com.lapczynski.commander.application.port.ApprovalRepository;
 import com.lapczynski.commander.application.port.AuditLog;
 import com.lapczynski.commander.application.port.IncidentRepository;
+import com.lapczynski.commander.application.port.SafetyMetrics;
 import com.lapczynski.commander.domain.approval.ActionFingerprint;
 import com.lapczynski.commander.domain.approval.Actor;
 import com.lapczynski.commander.domain.approval.ApprovalDecision;
@@ -50,13 +51,28 @@ public class ApprovalService {
   private final IncidentRepository incidents;
   private final AuditLog auditLog;
   private final Clock clock;
+  private final SafetyMetrics metrics;
 
   public ApprovalService(
       ApprovalRepository approvals, IncidentRepository incidents, AuditLog auditLog, Clock clock) {
+    this(approvals, incidents, auditLog, clock, SafetyMetrics.NONE);
+  }
+
+  /**
+   * @param metrics counts decisions and refusals. Never allowed to affect the outcome: a metrics
+   *     backend being unavailable must not decide whether an action is authorised.
+   */
+  public ApprovalService(
+      ApprovalRepository approvals,
+      IncidentRepository incidents,
+      AuditLog auditLog,
+      Clock clock,
+      SafetyMetrics metrics) {
     this.approvals = approvals;
     this.incidents = incidents;
     this.auditLog = auditLog;
     this.clock = clock;
+    this.metrics = metrics;
   }
 
   /** Raises a request and records it in the audit trail. */
@@ -115,6 +131,9 @@ public class ApprovalService {
                 "fingerprint", request.fingerprint().abbreviated()),
             clock.instant()));
 
+    metrics.approvalDecision("APPROVED");
+    metrics.approvalWait(java.time.Duration.between(request.requestedAt(), clock.instant()));
+
     log.info(
         "Approval granted: approvalId={} by={} action={}",
         approvalId,
@@ -141,6 +160,9 @@ public class ApprovalService {
             "%s rejected %s".formatted(approver.displayName(), request.action().type()),
             Map.of("approvalId", approvalId.toString(), "comment", comment == null ? "" : comment),
             clock.instant()));
+
+    metrics.approvalDecision("REJECTED");
+    metrics.approvalWait(java.time.Duration.between(request.requestedAt(), clock.instant()));
 
     log.info("Approval rejected: approvalId={} by={}", approvalId, approver.id());
   }
@@ -172,6 +194,26 @@ public class ApprovalService {
           new ApprovalException.NotAuthorised(
               approver.id(), "the system cannot approve its own remediation"));
     }
+
+    // Separation of duties. The person who raised an incident must not be the one who authorises
+    // acting on it: an attacker who can open incidents would otherwise be able to open one that
+    // justifies the action they wanted, then approve it themselves.
+    //
+    // Incidents opened by the system are exempt, because that is the normal path and every human
+    // would otherwise be blocked from approving anything. The system approving its own remediation
+    // is refused separately, above.
+    incidents
+        .openedBy(request.incidentId())
+        .filter(opener -> !opener.isSystem())
+        .filter(opener -> opener.id().equals(approver.id()))
+        .ifPresent(
+            opener -> {
+              throw reject(
+                  request,
+                  new ApprovalException.NotAuthorised(
+                      approver.id(),
+                      "the actor who opened this incident cannot also approve acting on it"));
+            });
 
     Optional<ApprovalDecision> existing = approvals.findDecision(approvalId);
     if (existing.isPresent()) {
@@ -231,6 +273,11 @@ public class ApprovalService {
             "Approval attempt refused: %s".formatted(reason.getClass().getSimpleName()),
             Map.of("approvalId", request.id().toString(), "reason", reason.toString()),
             clock.instant()));
+
+    // Tagged by refusal type, not by actor or resource, so cardinality stays bounded. STALE and
+    // EXPIRED are routine; NOT_AUTHORISED is somebody attempting a decision they cannot make.
+    metrics.approvalDecision(
+        "REFUSED_" + reason.getClass().getSimpleName().toUpperCase(java.util.Locale.ROOT));
 
     log.warn("Approval attempt refused: approvalId={} reason={}", request.id(), reason);
     return new ApprovalException.Rejected(reason);

@@ -133,7 +133,7 @@ not a local Ollama install — the same approach ADK uses for its own Ollama tes
 ## `bedrock` — optional, off by default
 
 Deferred to Phase 7 with the rest of the AWS integration. Amazon Nova Lite at $0.06/$0.24 per
-million tokens works out to roughly **$0.42/month** against the documented sample workload. Request,
+million tokens works out to roughly **$0.54/month** against the documented sample workload. Request,
 token and monthly-cost limits are enforced by a guard that fails closed.
 
 ---

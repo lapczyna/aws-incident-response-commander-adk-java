@@ -297,6 +297,11 @@ class RecoveryVerificationTest {
     }
 
     @Override
+    public Optional<Actor> openedBy(IncidentId id) {
+      return Optional.of(Actor.SYSTEM);
+    }
+
+    @Override
     public void update(Incident incident, long expectedVersion, Actor actor, String reason) {
       if (stored.version() != expectedVersion) {
         throw new IllegalStateException("optimistic lock failure in fixture");

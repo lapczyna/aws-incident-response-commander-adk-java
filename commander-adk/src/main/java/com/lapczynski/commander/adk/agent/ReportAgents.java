@@ -49,7 +49,7 @@ public final class ReportAgents {
             {investigation_summary}
 
             The hypothesis that was acted on:
-            {hypothesis}
+            {hypothesis?}
 
             The evidence you may cite, already numbered:
             {citable_evidence}

@@ -1,0 +1,94 @@
+# Incident Commander configuration.
+#
+# Defaults are chosen so that a fresh checkout starts against the simulator with a fake model and
+# changes nothing: no AWS calls, no paid provider, dry run on. Every step towards acting for real is
+# an explicit opt-in, and each one is a separate switch rather than a single "production" flag that
+# turns several things on at once.
+
+spring:
+  application:
+    name: incident-commander
+
+  # `fake` and `simulator` together mean the application is fully functional with no external
+  # dependency but PostgreSQL. Override with SPRING_PROFILES_ACTIVE.
+  profiles:
+    default: fake,simulator
+
+  datasource:
+    url: ${COMMANDER_DB_URL:jdbc:postgresql://localhost:5432/commander}
+    username: ${COMMANDER_DB_USER:commander}
+    # No default. A blank password fails fast against a local container; a default that happened to
+    # work in production would be a credential in a repository.
+    password: ${COMMANDER_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      # Below the investigation deadline, so a starved pool surfaces as a fast failure rather than
+      # as an investigation that silently runs out of time waiting for a connection.
+      connection-timeout: 5000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  threads:
+    virtual:
+      enabled: true
+
+commander:
+  # Deterministic guardrails. These are the values the policy engine enforces; nothing below is
+  # advisory, and none of it is visible to a model.
+  policy:
+    actions-enabled: ${COMMANDER_ACTIONS_ENABLED:false}
+    # The single most important default in this file. Actions are simulated and reported as
+    # simulated unless this is explicitly turned off.
+    dry-run: ${COMMANDER_DRY_RUN:true}
+    aws-account-id: ${COMMANDER_AWS_ACCOUNT_ID:123456789012}
+    aws-region: ${AWS_REGION:eu-west-1}
+    environment: ${COMMANDER_ENVIRONMENT:demo}
+    minimum-confidence: 0.7
+    max-desired-count: 3
+    required-tag:
+      key: Project
+      value: aws-incident-response-commander
+
+  model:
+    # Monthly ceiling on model spend, in USD, enforced by CostGuard, which fails closed. This bounds
+    # LLM usage only and says nothing about what surrounding AWS infrastructure costs.
+    monthly-budget-usd: ${COMMANDER_MODEL_BUDGET_USD:10.00}
+
+  investigation:
+    max-tool-calls: 16
+    deadline: PT5M
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Deliberately not "*". An incident tool exposes internals worth reading, and the set of
+        # endpoints that are safe to serve is smaller than the set that is useful in a shell.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: incident-commander
+  tracing:
+    sampling:
+      # Full sampling. Investigations are rare and each one is worth a complete trace; sampling
+      # would drop exactly the run someone is trying to understand.
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:}
+
+logging:
+  level:
+    root: INFO
+    com.lapczynski.commander: INFO
+    # Prompts and responses would be logged at DEBUG by ADK. Left at INFO on purpose: raising it
+    # puts untrusted operational data, and anything a model repeats back, into the log pipeline.
+    com.google.adk: INFO
+    org.flywaydb: INFO

@@ -4,6 +4,7 @@ import com.lapczynski.commander.application.port.AuditLog;
 import com.lapczynski.commander.application.port.EvidenceRepository;
 import com.lapczynski.commander.application.port.ExecutionRepository;
 import com.lapczynski.commander.application.port.IncidentRepository;
+import com.lapczynski.commander.application.port.SafetyMetrics;
 import com.lapczynski.commander.application.port.VerificationRepository;
 import com.lapczynski.commander.application.signal.MetricsPort;
 import com.lapczynski.commander.application.signal.SignalSourceException;
@@ -77,6 +78,7 @@ public class RecoveryVerifier {
   private final IncidentRepository incidents;
   private final AuditLog auditLog;
   private final Clock clock;
+  private final SafetyMetrics safetyMetrics;
 
   public RecoveryVerifier(
       MetricsPort metrics,
@@ -86,6 +88,26 @@ public class RecoveryVerifier {
       IncidentRepository incidents,
       AuditLog auditLog,
       Clock clock) {
+    this(
+        metrics,
+        evidence,
+        executions,
+        verifications,
+        incidents,
+        auditLog,
+        clock,
+        SafetyMetrics.NONE);
+  }
+
+  public RecoveryVerifier(
+      MetricsPort metrics,
+      EvidenceRepository evidence,
+      ExecutionRepository executions,
+      VerificationRepository verifications,
+      IncidentRepository incidents,
+      AuditLog auditLog,
+      Clock clock,
+      SafetyMetrics safetyMetrics) {
     this.metrics = metrics;
     this.evidence = evidence;
     this.executions = executions;
@@ -93,6 +115,7 @@ public class RecoveryVerifier {
     this.incidents = incidents;
     this.auditLog = auditLog;
     this.clock = clock;
+    this.safetyMetrics = safetyMetrics;
   }
 
   /**
@@ -221,6 +244,8 @@ public class RecoveryVerifier {
         verification.permitsResolution() ? IncidentStatus.RESOLVED : IncidentStatus.FAILED;
     Incident closed = incident.close(target, verification.summary(), now);
     incidents.update(closed, incident.version(), Actor.SYSTEM, "recovery verification: " + outcome);
+
+    safetyMetrics.verificationOutcome(outcome.name());
 
     log.info(
         "Recovery verification complete: incident={} metric={} before={} after={} outcome={} "
