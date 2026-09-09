@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 6 of 11 complete** — an investigation pauses for human
-approval, survives a restart, and executes the approved action exactly once.
+Built in phases. Current state: **Phase 7 of 11 complete** — the same investigation now runs
+against real AWS through guarded, least-privilege adapters, or against the simulator, unchanged.
 
-`./mvnw verify` runs **286 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **304 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -32,8 +32,8 @@ approval, survives a restart, and executes the approved action exactly once.
 | 4 | Parallel multi-agent investigation | ✅ done |
 | 5 | Bounded diagnosis and remediation planning | ✅ done |
 | 6 | Durable approval-gated remediation | ✅ done |
-| 7 | Guarded AWS adapters | next |
-| 8 | Recovery verification and reporting | planned |
+| 7 | Guarded AWS adapters | ✅ done |
+| 8 | Recovery verification and reporting | next |
 | 9 | Evaluation, security and observability | planned |
 | 10 | Cost-conscious AWS deployment | planned |
 | 11 | Portfolio polish | planned |
@@ -204,6 +204,7 @@ Full instructions, including how to pick a local model that can actually call to
 | [Schema](docs/schema.md) | Durable state, the constraints that carry weight, and the append-only audit rule |
 | [Simulator & target service](docs/simulator.md) | The eight scenarios, fixture format, and the fault-injection safety model |
 | [Model setup](docs/model-setup.md) | Gemini, Ollama and the fake model; choosing a local model that can actually call tools |
+| [AWS integration](docs/aws-integration.md) | The read adapters, their bounds, and the three independent layers enforcing the tag rule |
 
 Arriving in later phases: simulator scenario tutorial, Gemini/Ollama/Bedrock setup guides, AWS
 deployment and teardown, cost analysis, threat model, runbook, evaluation guide, troubleshooting and

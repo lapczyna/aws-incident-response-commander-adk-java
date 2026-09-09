@@ -1,0 +1,47 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RestartAndScaleTaggedDemoServicesOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:UpdateService",
+        "ecs:StopTask"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "ArnEquals": {
+          "ecs:cluster": "arn:aws:ecs:${region}:${account_id}:cluster/${project}"
+        },
+        "StringEquals": {
+          "aws:ResourceTag/Project": "${project_tag}",
+          "aws:ResourceTag/Environment": "${environment}"
+        }
+      }
+    },
+    {
+      "Sid": "DenyEverythingOutsideTheDemoCluster",
+      "Effect": "Deny",
+      "Action": "ecs:*",
+      "Resource": "*",
+      "Condition": {
+        "ArnNotEquals": {
+          "ecs:cluster": "arn:aws:ecs:${region}:${account_id}:cluster/${project}"
+        }
+      }
+    },
+    {
+      "Sid": "DenyDestructiveOperationsOutright",
+      "Effect": "Deny",
+      "Action": [
+        "ecs:DeleteService",
+        "ecs:DeleteCluster",
+        "ecs:DeregisterTaskDefinition",
+        "ecs:DeleteTaskDefinitions",
+        "ecs:CreateService",
+        "ecs:RegisterTaskDefinition"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

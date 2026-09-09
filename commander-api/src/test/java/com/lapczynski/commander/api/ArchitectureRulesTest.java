@@ -202,11 +202,14 @@ class ArchitectureRulesTest {
    * an excuse: as each implementation phase fills a module, this test fails until the corresponding
    * entry is deleted. The set must be empty by the end of Phase 3.
    */
-  private static final Set<String> BOOTSTRAP_EMPTY =
-      new LinkedHashSet<>(
-          Set.of(
-              // Phase 7 brings the AWS adapters; the last entry to go.
-              ROOT + ".aws"));
+  /**
+   * Empty as of Phase 7, and it must stay that way.
+   *
+   * <p>Every architecture rule is now armed against real classes. An entry reappearing here means a
+   * package was emptied or renamed, and the rules that name it have quietly stopped checking
+   * anything.
+   */
+  private static final Set<String> BOOTSTRAP_EMPTY = new LinkedHashSet<>(Set.of());
 
   @Test
   @DisplayName("every declared layer package is populated (guards the empty-should relaxation)")
