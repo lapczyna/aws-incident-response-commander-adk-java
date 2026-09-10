@@ -51,6 +51,13 @@ commander:
       key: Project
       value: aws-incident-response-commander
 
+  aws:
+    # Read by the AWS clients under the `aws` profile, and by the bedrock model profile, which
+    # refuses to start without it rather than defaulting to a region nobody chose. Left empty when
+    # AWS_REGION is unset: an empty value fails loudly at start-up, a plausible-looking default
+    # fails on the bill.
+    region: ${AWS_REGION:}
+
   model:
     # Monthly ceiling on model spend, in USD, enforced by CostGuard, which fails closed. This bounds
     # LLM usage only and says nothing about what surrounding AWS infrastructure costs.

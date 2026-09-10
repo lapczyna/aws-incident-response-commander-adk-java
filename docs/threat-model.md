@@ -158,6 +158,46 @@ a warning inside the report itself.
 **Where:** `RecoveryVerification`, `RecoveryVerifier`, `IncidentReportRenderer` · **Tests:**
 `RecoveryVerificationTest`, `IncidentReportRendererTest`
 
+### T12 — The deployment pipeline as a path around the approval gate
+
+Everything above constrains what the *running* system can do. None of it constrains what can be
+deployed. A workflow that could grant the task role a wider policy, point the Commander at a
+different account, or flip `dry_run` would reach production change without passing a single control
+in the application — and it would do so through the one component nobody thinks of as part of the
+security model.
+
+**Mitigation.** The deploy role's trust policy is bound to a GitHub *Environment*, not a branch, so
+credentials are issued only after that environment's required reviewers have approved: the approval
+is a precondition for holding credentials rather than a step in a workflow that could be reordered
+(ADR-0011). Both workflows are `workflow_dispatch` only, and applying additionally requires typing a
+confirmation phrase. The role itself is scoped by resource-name prefix and carries explicit denies
+for every identity-escalation path — `iam:CreateUser`, `iam:CreateAccessKey`,
+`iam:UpdateAssumeRolePolicy`, and attaching any managed policy other than the ECS task execution one
+— which no later `Allow` can override. The action policy is attached only when
+`enable_remediation_actions` is true, and its default is false, so the deployed task role does not
+carry `ecs:UpdateService` at all unless someone asked for it in writing.
+
+**Where:** `infra/terraform/bootstrap/oidc.tf`, `infra/terraform/iam.tf`, `.github/workflows/` ·
+**Tests:** `DeploymentContractTest` (the deployment defaults are the safe ones, the required tag
+matches the tag Terraform attaches, and no IAM placeholder exists that Terraform does not substitute)
+
+### T13 — Configuration drift silently disabling a control
+
+The tag rule is enforced three times and every one of those checks compares against a *configured*
+value. If Terraform stops attaching `Project=aws-incident-response-commander`, or the application
+starts requiring a different value, all three layers refuse every action — and the symptom looks
+like a policy bug rather than a deployment one. The reverse drift is worse: an environment name that
+no longer matches means a proposal is refused for the wrong reason, and someone widens the rule to
+make the demo work.
+
+**Mitigation.** The agreement is asserted rather than documented. The required tag in
+`application.yaml`, the `project_tag` default in `variables.tf`, and the tag the ECS service
+actually carries are checked against each other in the Java build, as are the environment name and
+the log-group prefix the read policy is scoped to.
+
+**Where:** `application.yaml`, `infra/terraform/variables.tf`, `infra/iam/` · **Test:**
+`DeploymentContractTest`
+
 ## Defence in depth, concretely
 
 The demo tag rule is enforced three times, in three places that fail independently:
@@ -176,6 +216,11 @@ Stated plainly, because a threat model claiming total coverage is not one.
 
 - **A compromised AWS account or task role.** Everything here assumes the IAM boundary holds. An
   attacker holding the task role does not need this application.
+- **Network-level attacks on the deployed tasks.** There is no NAT Gateway, so Fargate tasks run in
+  public subnets with routable addresses and the security group is the only thing in front of them.
+  That is a deliberate cost trade, described in full in [ADR-0011](adr/0011-deployment-topology-and-cost.md),
+  and it is why `admin_cidr` defaults to empty and creates no ingress rule at all. Anyone adapting
+  this for something real should reverse that decision first.
 - **A malicious operator with the approver role.** Separation of duties closes one specific
   self-approval path. It does not stop two colluding humans, and no control here would.
 - **Model provider compromise.** A subverted provider could return anything; the blast radius is the

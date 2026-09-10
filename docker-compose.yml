@@ -1,7 +1,8 @@
 # Local stack for the Incident Commander demo.
 #
-# Brings up PostgreSQL and the fault-injectable target service. The Commander itself is added in
-# Phase 3, when it has agents to run.
+# PostgreSQL, the Commander, and the fault-injectable target service it investigates. This is the
+# same image and the same configuration shape that ECS runs in AWS — the difference is the
+# datasource URL and where the secrets come from, which is the difference that should exist.
 #
 #   docker compose up -d
 #   scripts/generate-traffic.sh
@@ -49,6 +50,40 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  commander:
+    build:
+      context: .
+      dockerfile: commander-api/Dockerfile
+    container_name: incident-commander
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # fake and simulator: no model API key, no AWS credentials, no network calls to a provider.
+      # Change to gemini,simulator and set GEMINI_API_KEY to run it against a real model, or to
+      # fake,aws to read live AWS with a scripted model. The two choices are independent on purpose.
+      SPRING_PROFILES_ACTIVE: ${COMMANDER_PROFILES:-fake,simulator}
+      COMMANDER_DB_URL: jdbc:postgresql://postgres:5432/commander
+      COMMANDER_DB_USER: commander
+      COMMANDER_DB_PASSWORD: commander
+      # The three switches, at their safe defaults, spelled out rather than inherited so that this
+      # file shows what a local run can and cannot do.
+      COMMANDER_ACTIONS_ENABLED: "false"
+      COMMANDER_DRY_RUN: "true"
+      COMMANDER_ENVIRONMENT: demo
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "8080:8080"
+    # Matches the ECS task definition, so a memory problem shows up locally rather than only on
+    # Fargate. MaxRAMPercentage in the image reads this limit.
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health/readiness || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
 
 volumes:
   postgres-data:

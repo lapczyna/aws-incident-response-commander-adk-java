@@ -72,6 +72,38 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
 
+  terraform:
+    name: Infrastructure
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Needs no credentials either, which is the point. `terraform validate` type-checks the whole
+    # configuration and `-backend=false` keeps init from reaching for the state bucket, so a syntax
+    # error or a mistyped attribute fails on a pull request rather than in the middle of a manual
+    # deployment that has already created half a VPC.
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+
+      - name: Format
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: Validate the stack
+        working-directory: infra/terraform
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Validate the bootstrap module
+        working-directory: infra/terraform/bootstrap
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
   dependencies:
     name: Dependency scan
     runs-on: ubuntu-latest

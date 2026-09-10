@@ -227,9 +227,10 @@ class CostGuardTest {
     @Test
     @DisplayName("Nova Lite pricing produces the figure the documentation quotes")
     void novaLiteSampleWorkload() {
-      // The README states roughly USD 0.42/month for 50 incidents at ~120k input and ~15k output
+      // docs/cost.md states USD 0.54/month for 50 incidents at ~120k input and ~15k output
       // tokens each. This keeps that claim honest: if the arithmetic or the quoted prices change,
-      // the number in the documentation is wrong and this fails.
+      // the number in the documentation is wrong and this fails. It was written when the
+      // documentation said 0.42 and the arithmetic said otherwise.
       ModelPricing novaLite =
           new ModelPricing("amazon.nova-lite-v1:0", new BigDecimal("0.06"), new BigDecimal("0.24"));
 

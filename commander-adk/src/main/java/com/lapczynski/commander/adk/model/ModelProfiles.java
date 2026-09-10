@@ -69,4 +69,40 @@ public class ModelProfiles {
     log.info("Model profile: ollama, model={} baseUrl={}", modelName, baseUrl);
     return OllamaModelFactory.create(modelName, baseUrl);
   }
+
+  /**
+   * Amazon Nova Lite through Bedrock Converse.
+   *
+   * <p>The cheapest of the three real providers at $0.06/$0.24 per million tokens, and the only one
+   * that needs no credential of its own: on Fargate it authenticates as the task role, which is
+   * also the identity IAM scopes to exactly one model ARN. There is nothing to rotate and nothing
+   * to leak.
+   *
+   * <p>The region check is the interesting part. Spring AI resolves the region through the SDK's
+   * default chain and, if that produces nothing, falls back to {@code us-east-1} with a debug log.
+   * Silently calling a model in another region is a wrong answer about cost, latency and data
+   * residency at once, so this refuses to start instead. {@code AWS_REGION} is set by ECS and by
+   * every sane local profile; if it is absent, saying so now is cheaper than discovering it from a
+   * bill.
+   */
+  @Bean
+  @Profile("bedrock")
+  public BaseLlm bedrockModel(
+      @Value("${commander.model.bedrock.name:amazon.nova-lite-v1:0}") String modelId,
+      @Value("${commander.aws.region:}") String region) {
+
+    if (region == null || region.isBlank()) {
+      throw new IllegalStateException(
+          """
+          The bedrock profile is active but no AWS region is configured.
+          Set AWS_REGION, or commander.aws.region, to the region the model is enabled in:
+            export AWS_REGION=eu-west-1
+          Without it Spring AI would fall back to us-east-1 and call a model in a region you did \
+          not choose.
+          """);
+    }
+
+    log.info("Model profile: bedrock, model={} region={}", modelId, region);
+    return BedrockModelFactory.create(modelId);
+  }
 }

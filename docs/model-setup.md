@@ -12,7 +12,7 @@ which profile to activate.
 | `fake` | Scripted `FakeLlm` | nothing | **CI default.** Tests and development. |
 | `gemini` | Gemini Developer API | an API key | The recommended way to run the demo. |
 | `ollama` | Local model via Ollama | ~4 GB RAM | When data cannot leave your machine. |
-| `bedrock` | Amazon Nova Lite | AWS credentials | Optional; Phase 7. |
+| `bedrock` | Amazon Nova Lite | an AWS role, and model access enabled | The cheapest real model, and the only one with no key to manage. |
 
 ---
 
@@ -130,11 +130,42 @@ not a local Ollama install — the same approach ADK uses for its own Ollama tes
 
 ---
 
-## `bedrock` — optional, off by default
+## `bedrock` — the cheapest real model, and no key to manage
 
-Deferred to Phase 7 with the rest of the AWS integration. Amazon Nova Lite at $0.06/$0.24 per
-million tokens works out to roughly **$0.54/month** against the documented sample workload. Request,
-token and monthly-cost limits are enforced by a guard that fails closed.
+Amazon Nova Lite at $0.06/$0.24 per million tokens: roughly **$0.54/month** against the documented
+workload of 50 incidents at ~120k input and ~15k output tokens each. `CostGuardTest` computes that
+figure from the same `ModelPricing` record the runtime uses, so it cannot drift away from what the
+guard enforces.
+
+```bash
+export AWS_REGION=eu-west-1
+./mvnw -pl commander-api -am spring-boot:run -Dspring-boot.run.profiles=bedrock,simulator
+```
+
+**Two things have to be true before it works.**
+
+*Model access is per account and per region.* Enable Nova Lite in the Bedrock console for your
+region; until you do, the first call returns `AccessDeniedException` and nothing earlier hints at
+it.
+
+*A region must be configured.* The profile refuses to start without one. Spring AI's own fallback,
+when no region resolves, is `us-east-1` logged at debug — a wrong answer about cost, latency and
+data residency delivered quietly. `ModelProfilesTest.refusesWithoutRegion` holds that guard in
+place.
+
+Credentials are never configured. Locally it uses your profile; on Fargate it authenticates as the
+task role, and `bedrock:InvokeModel` is scoped by IAM to exactly one model ARN — so choosing a more
+expensive model means editing infrastructure rather than an environment variable. The Terraform
+attaches that policy only when `model_profile = "bedrock"`.
+
+**Reaching ADK.** Through the same `SpringAI` adapter as Ollama, so there is one integration path
+rather than two (ADR-0002). `BedrockModelFactory` deliberately contains no AWS SDK types at all:
+`ArchitectureRulesTest` fails the build if the SDK is referenced outside
+`commander-integrations-aws`, so region and credentials are left to Spring AI's own resolution
+rather than passed in.
+
+> Nova Lite's tool-calling is measurably weaker than Gemini's. It is the right choice for cost and
+> for having nothing to leak; it is not the right choice for the best investigation you can get.
 
 ---
 

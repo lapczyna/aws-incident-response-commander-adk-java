@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 9 of 11 complete** — the safety claims are now tests, and
-the interesting one runs a model that has been completely taken in by an injected instruction.
+Built in phases. Current state: **Phase 10 of 11 complete** — there is now infrastructure to run it
+on, priced to the hour, and a teardown that checks its own work.
 
-`./mvnw verify` runs **464 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **472 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -35,8 +35,8 @@ the interesting one runs a model that has been completely taken in by an injecte
 | 7 | Guarded AWS adapters | ✅ done |
 | 8 | Recovery verification and reporting | ✅ done |
 | 9 | Evaluation, security and observability | ✅ done |
-| 10 | Cost-conscious AWS deployment | next |
-| 11 | Portfolio polish | planned |
+| 10 | Cost-conscious AWS deployment | ✅ done |
+| 11 | Portfolio polish | next |
 
 ---
 
@@ -128,7 +128,7 @@ tests.
 ### Run the local stack
 
 ```bash
-docker compose up -d                     # PostgreSQL + the fault-injectable target service
+docker compose up -d                     # PostgreSQL, the Commander, and the target service
 scripts/generate-traffic.sh --rps 5      # steady traffic against it
 
 # Inject a bad-deployment latency regression that expires on its own after 10 minutes
@@ -140,6 +140,25 @@ curl -X DELETE localhost:8081/admin/faults # reset everything
 
 Fault injection is **off unless explicitly enabled**, every fault expires on its own, and every
 magnitude is clamped to a compiled-in ceiling. See [docs/simulator.md](docs/simulator.md).
+
+The Commander comes up on `localhost:8080` with the `fake` model and the simulator, so it reaches no
+provider and no AWS account. `COMMANDER_PROFILES=gemini,simulator docker compose up -d` swaps the
+model without touching anything else.
+
+### Run it on AWS
+
+Optional, and priced so that it is worth doing once:
+**about $0.045/hour**, or roughly $33 if you leave it up for a month.
+
+```bash
+cd infra/terraform/bootstrap && terraform apply -var="github_repository=you/your-repo"
+# then: Actions -> Deploy to AWS -> plan, read it, apply
+```
+
+Nothing deploys automatically — both workflows are manual, and the GitHub Environment's approval is
+a precondition for obtaining AWS credentials at all rather than a step layered on top of them. Full
+walkthrough and the teardown checklist: [docs/deployment.md](docs/deployment.md). What each line
+item costs and why: [docs/cost.md](docs/cost.md).
 
 ### Useful commands
 
@@ -161,7 +180,7 @@ Set with `--spring.profiles.active=...`. See
 |---|---|---|---|
 | `gemini` | Gemini Developer API, native ADK integration | Free tier available | recommended |
 | `ollama` | Fully local via Spring AI → ADK `SpringAI` adapter | Free, needs ~4 GB RAM | privacy-first |
-| `bedrock` | Amazon Nova Lite via Bedrock Converse | ~$0.54/month at the documented workload | opt-in, Phase 7 |
+| `bedrock` | Amazon Nova Lite via Bedrock Converse | ~$0.54/month at the documented workload | cheapest, no key to manage |
 | `fake` | Deterministic scripted responses | Free | **CI default** |
 
 Full instructions, including how to pick a local model that can actually call tools:
@@ -171,9 +190,10 @@ Full instructions, including how to pick a local model that can actually call to
 > tiers are excluded. Do not send real incident data through the free tier. The `ollama` profile
 > exists for anyone who cannot send data anywhere.
 
-> **Cost ceiling.** The $10/month ceiling in this project applies to **LLM usage only**. It does not
-> describe the cost of the AWS infrastructure, which is documented separately in the cost analysis
-> delivered in Phase 10.
+> **Cost ceiling.** The $10/month ceiling in this project applies to **LLM usage only**. The AWS
+> infrastructure is a separate budget with a separate mechanism — about **$0.045/hour**, roughly $33
+> if left running for a month, and an alarm rather than a brake. Both are itemised in
+> [docs/cost.md](docs/cost.md).
 
 ---
 
@@ -211,7 +231,7 @@ defence. See [the threat model](docs/threat-model.md).
 
 | Document | Contents |
 |---|---|
-| [ADRs](docs/adr/README.md) | Ten decision records, plus the ADK Java compatibility findings |
+| [ADRs](docs/adr/README.md) | Eleven decision records, plus the ADK Java compatibility findings |
 | [Diagrams](docs/diagrams/architecture.md) | Component, agent topology, approval sequence, state machine, deployment |
 | [Dependency matrix](docs/dependency-matrix.md) | Every version, resolved by the build and explained |
 | [Schema](docs/schema.md) | Durable state, the constraints that carry weight, and the append-only audit rule |
@@ -219,12 +239,14 @@ defence. See [the threat model](docs/threat-model.md).
 | [Model setup](docs/model-setup.md) | Gemini, Ollama and the fake model; choosing a local model that can actually call tools |
 | [AWS integration](docs/aws-integration.md) | The read adapters, their bounds, and the three independent layers enforcing the tag rule |
 | [Verification & reporting](docs/reporting.md) | Why the verdict is arithmetic, and how citations are checked rather than trusted |
-| [Threat model](docs/threat-model.md) | Eleven threats, each with its mitigation and the test that holds it |
+| [Threat model](docs/threat-model.md) | Thirteen threats, each with its mitigation and the test that holds it |
 | [Observability](docs/observability.md) | Correlation across RxJava, the metrics that matter, and what is deliberately never logged |
 | [Sample postmortem](docs/samples/postmortem-checkout-latency.md) | A real rendered report — of a remediation that did not work |
+| [Deployment](docs/deployment.md) | Bootstrap, deploy, reach it, and the teardown checklist |
+| [Cost analysis](docs/cost.md) | Itemised to the hour, and the five decisions that produced the number |
 
-Arriving in later phases: Bedrock setup guide, AWS deployment and teardown, cost analysis, runbook
-and troubleshooting.
+Arriving in Phase 11: the operator console and approval API, a scripted end-to-end demo, and a
+runbook.
 
 ---
 

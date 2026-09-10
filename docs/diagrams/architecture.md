@@ -214,30 +214,33 @@ stateDiagram-v2
 
 ## 5. Deployment view
 
-Cost-conscious by default: no NAT Gateway, single-AZ RDS, one task per service, short log retention.
-Everything expensive sits behind an `enable_*` variable that defaults to off.
+Cost-conscious by default: no NAT Gateway, single-AZ RDS, Fargate Spot, one task per service, short
+log retention. Everything expensive sits behind an `enable_*` variable that defaults to off. What
+each line costs, and the alternatives that were rejected: [docs/cost.md](../cost.md) and
+[ADR-0011](../adr/0011-deployment-topology-and-cost.md).
 
 ```mermaid
 graph TB
     subgraph AWS["AWS account — demo environment"]
         subgraph VPC["VPC"]
             subgraph PUB["Public subnets — egress-capable Fargate"]
-                C1["ECS Fargate<br/>commander-api<br/>1 task"]
-                C2["ECS Fargate<br/>demo-target-service<br/>1 task"]
+                C1["ECS Fargate Spot<br/>commander-api<br/>1 task, public IP"]
+                C2["ECS Fargate Spot<br/>demo-target-service<br/>1 task, public IP"]
                 ALB["ALB<br/><i>optional</i>"]
             end
-            subgraph PRIV["Isolated DB subnets — no NAT"]
-                RDS[("RDS PostgreSQL<br/>single-AZ, not HA")]
+            subgraph PRIV["Isolated DB subnets — no route out at all"]
+                RDS[("RDS PostgreSQL<br/>single-AZ, not HA<br/>RDS-managed credential")]
             end
         end
         ECR["ECR"]
-        SM["Secrets Manager<br/>model API key, DB password"]
+        SM["Secrets Manager<br/>model API key — created empty,<br/>value set out of band"]
         CW["CloudWatch<br/>logs, metrics, alarms, dashboard"]
         BUD["AWS Budget alert"]
     end
 
-    DEV["Developer"] -->|"terraform apply<br/>manual workflow_dispatch"| AWS
-    GH["GitHub Actions<br/>OIDC, no static keys"] -->|push image| ECR
+    DEV["Developer"] -->|"approves the aws-demo environment"| GH
+    GH["GitHub Actions<br/>OIDC, no static keys<br/>manual workflow_dispatch only"] -->|terraform apply| AWS
+    GH -->|push image| ECR
     ECR --> C1
     ECR --> C2
     C1 --- RDS

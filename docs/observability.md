@@ -77,6 +77,19 @@ default, and the safety-critical services take it through an overloaded construc
 without a registry behaves identically to one with it, so a metrics backend being unavailable cannot
 change whether an action is authorised.
 
+### In the deployed stack, these metrics are not in CloudWatch
+
+The Terraform creates a CloudWatch dashboard, and none of the table above appears on it. That is a
+cost decision made explicit: custom CloudWatch metrics are billed per metric per month, and there
+are eleven of them here before tags multiply them out. The CloudWatch dashboard shows the free
+`AWS/ECS` and `AWS/RDS` metrics — CPU, memory, connections, free storage — and carries a text panel
+saying what it is missing and where to find it.
+
+The consequence, stated rather than glossed: **the interesting numbers are only visible to something
+scraping `/actuator/prometheus`**, which in the deployed demo means port-forwarding to the task or
+running Grafana yourself. The operational picture stays free and the application picture stays
+local. See [docs/cost.md](cost.md).
+
 ## What is deliberately not recorded
 
 - **No prompts or model responses.** Both are untrusted operational data. A log pipeline forwards,

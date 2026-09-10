@@ -1,0 +1,243 @@
+name: Deploy to AWS
+
+# Manual only. There is no push trigger, no schedule and no branch filter that could acquire one by
+# accident, because a merge to main should not be able to create an RDS instance.
+#
+# The workflow plans by default. Applying requires selecting it *and* typing the confirmation
+# phrase, and then passing the aws-demo environment's approval — three deliberate acts, which is
+# the same posture the application takes towards remediation: the model can propose, a human
+# decides, and the decision is bound to something specific.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'plan shows what would change; apply changes it'
+        type: choice
+        options: [plan, apply]
+        default: plan
+      confirm:
+        description: 'Type "deploy" to apply. Ignored for a plan.'
+        type: string
+        default: ''
+      image_tag:
+        description: 'Image tag to deploy. Defaults to this run''s commit SHA.'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  # One deployment at a time. Terraform's S3 lock would catch a concurrent apply anyway, but it
+  # would catch it halfway through building images, which is a slower way to learn the same thing.
+  group: aws-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ${{ inputs.action }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    # The GitHub Environment is not decoration. The deploy role's trust policy requires the OIDC
+    # subject to be repo:<owner>/<name>:environment:aws-demo, so a job that does not run in this
+    # environment cannot obtain AWS credentials at all — the environment's required reviewers are a
+    # precondition for holding credentials, not a convention layered on top of them.
+    environment: aws-demo
+
+    permissions:
+      id-token: write # Mint the OIDC token. This is the whole credential story; there are no keys.
+      contents: read
+
+    env:
+      TF_IN_AUTOMATION: 'true'
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      # Must match the `project` variable in terraform.tfvars: it is the ECR namespace, and a
+      # mismatch here pushes images to a repository the task definition does not reference.
+      PROJECT: commander
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Refuse an unconfirmed apply
+        if: inputs.action == 'apply' && inputs.confirm != 'deploy'
+        run: |
+          echo "::error::apply requires the confirmation phrase. Re-run with confirm: deploy"
+          exit 1
+
+      - name: Resolve the image tag
+        id: tag
+        run: |
+          TAG="${{ inputs.image_tag }}"
+          if [ -z "$TAG" ]; then TAG="${{ github.sha }}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Deploying image tag $TAG"
+
+      # Deployment settings come from one repository variable, TFVARS, holding the contents of a
+      # tfvars file. It is a variable rather than a secret because nothing in it is one — the
+      # secrets in this deployment are the database credential, which RDS owns, and the model key,
+      # which is written straight into Secrets Manager and never passes through here.
+      #
+      # It has to exist. budget_notification_email has no default anywhere in the configuration, so
+      # a deployment that never says where budget alerts go cannot be planned at all.
+      - name: Deployment settings
+        run: |
+          if [ -z "${{ vars.TFVARS }}" ]; then
+            echo "::error::Repository variable TFVARS is not set. At a minimum it must contain budget_notification_email. See docs/deployment.md."
+            exit 1
+          fi
+          cat > infra/terraform/ci.auto.tfvars <<'TFVARS_EOF'
+          ${{ vars.TFVARS }}
+          TFVARS_EOF
+          echo "Settings in effect (repository and image tags are supplied on the command line):"
+          sed 's/^/  /' infra/terraform/ci.auto.tfvars
+
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: gha-deploy-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=commander/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}"
+
+      # The one legitimate use of -target in this repository, and it exists because of a genuine
+      # ordering problem rather than to work around a broken graph: the registries have to exist
+      # before there is anywhere to push images to, and the services cannot start until the images
+      # are pushed. Creating exactly the two repositories first breaks the cycle, and the full
+      # apply below still reconciles everything.
+      - name: Create the registries
+        if: inputs.action == 'apply'
+        working-directory: infra/terraform
+        run: |
+          terraform apply -input=false -auto-approve \
+            -target=aws_ecr_repository.commander \
+            -target=aws_ecr_repository.demo_target \
+            -var="repository=${{ github.repository }}" \
+            -var="commander_image_tag=${{ steps.tag.outputs.tag }}" \
+            -var="demo_target_image_tag=${{ steps.tag.outputs.tag }}"
+
+      - name: Registry login
+        if: inputs.action == 'apply'
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Skip images that are already published
+        if: inputs.action == 'apply'
+        id: published
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # Tags are immutable, so re-pushing the same SHA fails rather than overwriting. Checking
+          # first turns a re-run of a failed deploy into a fast path instead of an error.
+          for repo in commander demo-target; do
+            name="$PROJECT/$repo"
+            if aws ecr describe-images --repository-name "$name" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              echo "${repo//-/_}_exists=true" >> "$GITHUB_OUTPUT"
+              echo "$name:$TAG is already published"
+            else
+              echo "${repo//-/_}_exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+      - uses: docker/setup-buildx-action@v3
+        if: inputs.action == 'apply'
+
+      - name: Build and push the Commander
+        if: inputs.action == 'apply' && steps.published.outputs.commander_exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: commander-api/Dockerfile
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}/commander:${{ steps.tag.outputs.tag }}
+          # The Maven dependency layer is the expensive one and it changes rarely. Caching it in
+          # GitHub's cache keeps a redeploy in minutes rather than tens of minutes.
+          cache-from: type=gha,scope=commander
+          cache-to: type=gha,scope=commander,mode=max
+          provenance: false
+
+      - name: Build and push the demo target
+        if: inputs.action == 'apply' && steps.published.outputs.demo_target_exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: demo-target-service/Dockerfile
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}/demo-target:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha,scope=demo-target
+          cache-to: type=gha,scope=demo-target,mode=max
+          provenance: false
+
+      - name: Terraform plan
+        working-directory: infra/terraform
+        run: |
+          terraform plan -input=false -out=tfplan \
+            -var="repository=${{ github.repository }}" \
+            -var="commander_image_tag=${{ steps.tag.outputs.tag }}" \
+            -var="demo_target_image_tag=${{ steps.tag.outputs.tag }}"
+          terraform show -no-color tfplan > plan.txt
+          {
+            echo '### Terraform plan'
+            echo '```'
+            # The tail, not the head: the summary line at the end is what a reviewer reads first,
+            # and a large plan would otherwise push it past the step summary's size limit.
+            tail -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Terraform apply
+        if: inputs.action == 'apply'
+        working-directory: infra/terraform
+        run: terraform apply -input=false -auto-approve tfplan
+
+      # Runs after apply, not before: the secret is created by this configuration, so on a first
+      # deployment there is nothing to check until it exists. A placeholder here means the service
+      # is running and will fail on its first investigation, which is a warning worth shouting
+      # about rather than a reason to have refused to deploy.
+      - name: Warn if the model key is still a placeholder
+        if: inputs.action == 'apply'
+        working-directory: infra/terraform
+        run: |
+          arn="$(terraform output -raw gemini_secret_arn 2>/dev/null || true)"
+          if [ -z "$arn" ] || [ "$arn" = "null" ]; then
+            echo "No model key secret in this deployment (profile is not gemini)."
+            exit 0
+          fi
+          # DescribeSecret, not GetSecretValue. The deploy role cannot read the value, and does not
+          # need to: the timestamps say whether anyone has ever written one.
+          changed="$(aws secretsmanager describe-secret --secret-id "$arn" --query 'LastChangedDate' --output text)"
+          created="$(aws secretsmanager describe-secret --secret-id "$arn" --query 'CreatedDate' --output text)"
+          if [ "$changed" = "$created" ]; then
+            echo "::warning::The model API key is still the Terraform placeholder. Set it with: aws secretsmanager put-secret-value --secret-id $arn --secret-string \"\$GEMINI_API_KEY\"; then restart the service."
+          fi
+
+      - name: What was deployed
+        if: inputs.action == 'apply'
+        working-directory: infra/terraform
+        run: |
+          {
+            echo '### Deployed'
+            echo '```json'
+            # The safety posture output, printed every time. It is the deployment's own answer to
+            # "can this thing change anything", and it belongs in the run log rather than in
+            # somebody's memory of which tfvars were used.
+            terraform output -json safety_posture
+            echo '```'
+            echo ''
+            echo "Console: $(terraform output -raw console_url 2>/dev/null || echo 'no load balancer; see the commander_task_ip_hint output')"
+            echo "Dashboard: $(terraform output -raw dashboard_url)"
+            echo ''
+            echo '**Tear it down when you are finished.** Run the Destroy workflow; the stack bills by the hour.'
+          } >> "$GITHUB_STEP_SUMMARY"

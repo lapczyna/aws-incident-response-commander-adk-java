@@ -1,0 +1,45 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is git-ignored.
+#
+# Only two variables have no default and must be set: repository, and budget_notification_email.
+# Everything else already has the cheap, safe value.
+
+repository                = "your-github-account/aws-incident-response-commander-adk-java"
+budget_notification_email = "you@example.com"
+
+# The image tags to run. The deploy workflow passes these on the command line; set them here only
+# for a local apply.
+commander_image_tag   = "0000000000000000000000000000000000000000"
+demo_target_image_tag = "0000000000000000000000000000000000000000"
+
+# ---------------------------------------------------------------------------------------------
+# The four settings worth thinking about before the first apply
+# ---------------------------------------------------------------------------------------------
+
+# Where the Commander can be reached from. Empty means nowhere: the stack comes up with no inbound
+# rule at all, which is a fine state for a first apply. Set it to your own address, never 0.0.0.0/0.
+# admin_cidr = "203.0.113.4/32"
+
+# fake costs nothing and calls nothing, and is enough to watch the pipeline run end to end.
+# model_profile = "bedrock"
+
+# simulator makes no AWS API calls. Switching to aws means investigations read CloudWatch,
+# CloudTrail and ECS for real, which is a cost and a permission change at once.
+# signal_source = "aws"
+
+# The two switches that decide whether anything can be changed in AWS. Both must be turned off
+# their default for a remediation to have any effect, and they are separate because approving an
+# action and executing one are different decisions.
+# enable_remediation_actions = true
+# dry_run                    = false
+
+# ---------------------------------------------------------------------------------------------
+# Cost knobs
+# ---------------------------------------------------------------------------------------------
+
+# monthly_budget_usd        = 40
+# use_fargate_spot          = true    # roughly 70 percent off, interruption is survivable here
+# log_retention_days        = 3
+# enable_container_insights = false   # billed per metric; leave it off
+# enable_alb                = false   # about USD 18/month idle. See docs/cost.md.
+# enable_demo_target        = true    # the service being investigated
+# db_instance_class         = "db.t4g.micro"

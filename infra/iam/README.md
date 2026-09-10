@@ -6,7 +6,14 @@ read-only mode by attaching only the first — and that is the sensible way to t
 account for the first time.
 
 `${region}`, `${account_id}`, `${project}`, `${project_tag}` and `${environment}` are substituted by
-Terraform in Phase 10.
+`infra/terraform/iam.tf`, which renders these files with `templatefile()` rather than restating them
+as `aws_iam_policy_document` blocks. There is one copy of each policy, and it is this one.
+
+That arrangement has a failure mode: `templatefile()` fails on a placeholder it was not given a
+value for, so adding `${cluster}` to a document here would pass every check in the repository and
+then break an apply halfway through creating a VPC. `DeploymentContractTest` reads the substitution
+map out of `iam.tf` and fails the Java build if either document uses a placeholder that is not in
+it.
 
 ## `commander-task-role-read.json`
 

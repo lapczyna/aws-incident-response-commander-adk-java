@@ -1,0 +1,140 @@
+name: Destroy the AWS stack
+
+# The most important workflow in this repository.
+#
+# A demo that cannot be taken down reliably is a subscription. Everything in the Terraform
+# configuration is built so that this runs to completion in one pass: no deletion protection on the
+# database or the load balancer, no final snapshot, no seven-day soft delete on the secret,
+# force_delete on the registries. Each of those is a deliberate weakening of a production default,
+# and each is justified by this workflow existing.
+#
+# It ends by asking the tagging API what is left, because "terraform destroy completed" and
+# "nothing is running" are different claims and only the second one is about the bill.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type the project name to confirm destruction'
+        type: string
+        required: true
+      keep_registries:
+        description: 'Keep the ECR repositories, so a redeploy does not have to rebuild images'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aws-deploy
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    name: destroy
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: aws-demo
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      TF_IN_AUTOMATION: 'true'
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      PROJECT: commander
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Confirm
+        run: |
+          if [ "${{ inputs.confirm }}" != "$PROJECT" ]; then
+            echo "::error::Type '$PROJECT' to confirm. Nothing was destroyed."
+            exit 1
+          fi
+
+      - name: Deployment settings
+        run: |
+          if [ -n "${{ vars.TFVARS }}" ]; then
+            cat > infra/terraform/ci.auto.tfvars <<'TFVARS_EOF'
+          ${{ vars.TFVARS }}
+          TFVARS_EOF
+          else
+            # A destroy needs the variables to have values, not the right values — every resource
+            # it removes is read from state. This is enough to satisfy the validations so that a
+            # missing repository variable cannot be the reason a teardown does not run.
+            echo 'budget_notification_email = "teardown@example.com"' > infra/terraform/ci.auto.tfvars
+          fi
+
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: gha-destroy-${{ github.run_id }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: infra/terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=commander/terraform.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION }}"
+
+      - name: Terraform destroy
+        working-directory: infra/terraform
+        run: |
+          # The image tags are required variables and irrelevant to a destroy; the placeholder is
+          # never used to pull anything, because nothing is being started.
+          ARGS='-input=false -auto-approve'
+          ARGS="$ARGS -var=repository=${{ github.repository }}"
+          ARGS="$ARGS -var=commander_image_tag=destroy"
+          ARGS="$ARGS -var=demo_target_image_tag=destroy"
+
+          if [ "${{ inputs.keep_registries }}" = "true" ]; then
+            # Keeping the registries costs USD 0.10 per GB-month and saves a full image rebuild on
+            # the next deploy. Everything that bills by the hour still goes.
+            # Data sources are filtered out along with the registries: `terraform state list`
+            # reports them, and a data address is not a valid destroy target.
+            terraform state list \
+              | grep -v -E '^data\.' \
+              | grep -v -E '^aws_ecr_(repository|lifecycle_policy)\.' \
+              | sed 's/^/-target=/' > targets.txt
+            # shellcheck disable=SC2046
+            terraform destroy $ARGS $(tr '\n' ' ' < targets.txt)
+          else
+            terraform destroy $ARGS
+          fi
+
+      # The claim, checked. Terraform only knows about what it created; this asks AWS what still
+      # carries the project tag, which also catches anything created by hand during the demo.
+      - name: What is left
+        if: always()
+        run: |
+          echo '### After teardown' >> "$GITHUB_STEP_SUMMARY"
+          remaining="$(aws resourcegroupstaggingapi get-resources \
+            --tag-filters "Key=Project,Values=aws-incident-response-commander" \
+            --query 'ResourceTagMappingList[].ResourceARN' --output text 2>/dev/null || echo 'QUERY_FAILED')"
+
+          if [ "$remaining" = "QUERY_FAILED" ]; then
+            echo 'Could not query the tagging API. Check the console before assuming the stack is gone.' >> "$GITHUB_STEP_SUMMARY"
+          elif [ -z "$remaining" ]; then
+            echo 'Nothing carries the project tag any more.' >> "$GITHUB_STEP_SUMMARY"
+            echo '' >> "$GITHUB_STEP_SUMMARY"
+            echo 'The Terraform state bucket and the deploy role are from the bootstrap module and survive on purpose. The bucket holds a few kilobytes; the role costs nothing.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '::warning::Resources still carry the project tag. They may be mid-deletion, or they may be billing.'
+            {
+              echo 'Still tagged:'
+              echo '```'
+              echo "$remaining" | tr '\t' '\n'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

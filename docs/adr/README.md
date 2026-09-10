@@ -15,6 +15,7 @@ accepted. Records are immutable once accepted; a reversal is a new ADR that supe
 | [0008](0008-rxjava-spring-bridge.md) | One RxJava-to-servlet bridge owning schedulers and MDC propagation | Accepted | ADK is RxJava, Spring is not; correlation IDs must survive the boundary |
 | [0009](0009-junit-golden-scenario-evaluation.md) | JUnit golden-scenario harness driven by a deterministic `FakeLlm` | Accepted | Java ADK has no evaluation framework, and CI cannot call a paid API |
 | [0010](0010-deterministic-recovery-verification.md) | Recovery verified by numeric comparison in Java; reports assembled from stored rows | Accepted | A model asked whether its own fix worked marks its own homework, and unverifiable citations are not citations |
+| [0011](0011-deployment-topology-and-cost.md) | Fargate in public subnets with no NAT Gateway; OIDC trust bound to a GitHub Environment | Accepted | The cheapest topology is not the most isolated one, and the approval must sit before the credential |
 
 ## Compatibility findings behind these records
 
