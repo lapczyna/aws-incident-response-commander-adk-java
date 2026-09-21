@@ -15,10 +15,12 @@ import com.google.genai.types.Part;
 import com.lapczynski.commander.adk.approval.ApprovalResumption;
 import com.lapczynski.commander.adk.approval.RemediationTool;
 import com.lapczynski.commander.application.port.IdempotencyStore;
+import com.lapczynski.commander.application.port.IncidentStateLookup;
 import com.lapczynski.commander.domain.approval.Actor;
 import com.lapczynski.commander.domain.evidence.Confidence;
 import com.lapczynski.commander.domain.incident.Incident;
 import com.lapczynski.commander.domain.incident.IncidentId;
+import com.lapczynski.commander.domain.incident.IncidentStatus;
 import com.lapczynski.commander.domain.incident.ServiceRef;
 import com.lapczynski.commander.domain.incident.Severity;
 import com.lapczynski.commander.domain.policy.PolicyConfiguration;
@@ -59,6 +61,17 @@ class ApprovalResumeIntegrationTest extends PostgresIntegrationTest {
       "arn:aws:ecs:eu-west-1:123456789012:service/demo/checkout";
   private static final Map<String, String> VALID_TAGS =
       Map.of("Project", "aws-incident-response-commander");
+
+  /**
+   * An incident that exists and is being remediated.
+   *
+   * <p>These tests are about resumption and idempotency, not about the incident record, and they
+   * write no incident rows. The tool reads the status before it writes anything — see {@code
+   * RemediationTool} — so it needs an answer, and the answer that keeps these tests testing what
+   * they were written to test is the one a real approved remediation would get.
+   */
+  private static final IncidentStateLookup REMEDIATING_INCIDENT =
+      incidentId -> Optional.of(IncidentStatus.REMEDIATING);
 
   @Autowired private JdbcClient jdbc;
   @Autowired private TransactionTemplate transactions;
@@ -120,6 +133,7 @@ class ApprovalResumeIntegrationTest extends PostgresIntegrationTest {
     RemediationTool tool =
         new RemediationTool(
             engine(dryRun),
+            REMEDIATING_INCIDENT,
             idempotency,
             VALID_TAGS,
             action -> {
@@ -401,6 +415,7 @@ class ApprovalResumeIntegrationTest extends PostgresIntegrationTest {
     RemediationTool refusing =
         new RemediationTool(
             new PolicyEngine(PolicyConfiguration.safeDefaults("123456789012", "eu-west-1", "demo")),
+            REMEDIATING_INCIDENT,
             idempotency,
             VALID_TAGS,
             action -> {
@@ -433,6 +448,7 @@ class ApprovalResumeIntegrationTest extends PostgresIntegrationTest {
     RemediationTool tool =
         new RemediationTool(
             engine(true),
+            REMEDIATING_INCIDENT,
             idempotency,
             VALID_TAGS,
             action -> {

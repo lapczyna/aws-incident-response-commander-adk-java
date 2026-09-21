@@ -13,6 +13,7 @@ import com.lapczynski.commander.adk.workflow.EvidenceCapture;
 import com.lapczynski.commander.application.ExecutionJournal;
 import com.lapczynski.commander.application.port.EvidenceRepository;
 import com.lapczynski.commander.application.port.IdempotencyStore;
+import com.lapczynski.commander.application.port.IncidentStateLookup;
 import com.lapczynski.commander.application.port.IncidentWorkflow;
 import com.lapczynski.commander.application.port.RemediationExecutorPort;
 import com.lapczynski.commander.application.port.TargetTags;
@@ -105,6 +106,7 @@ public class AgentRuntimeConfiguration {
   @Bean
   public RemediationTool remediationTool(
       PolicyEngine policyEngine,
+      IncidentStateLookup incidents,
       IdempotencyStore idempotency,
       TargetTags targetTags,
       ObjectProvider<RemediationExecutorPort> executor,
@@ -118,7 +120,13 @@ public class AgentRuntimeConfiguration {
     // reference is the entire coupling between the agent runtime and whatever can actually change
     // something, which is why neither module needs to know the other exists.
     return new RemediationTool(
-        policyEngine, idempotency, targetTags.values(), resolved::execute, journal, clock);
+        policyEngine,
+        incidents,
+        idempotency,
+        targetTags.values(),
+        resolved::execute,
+        journal,
+        clock);
   }
 
   private static String refuseWithNoExecutor(ProposedAction action) {

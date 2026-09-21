@@ -8,6 +8,7 @@ import com.lapczynski.commander.application.port.AuditLog;
 import com.lapczynski.commander.application.port.EvidenceRepository;
 import com.lapczynski.commander.application.port.ExecutionRepository;
 import com.lapczynski.commander.application.port.IncidentRepository;
+import com.lapczynski.commander.application.port.IncidentStateLookup;
 import com.lapczynski.commander.application.port.IncidentWorkflow;
 import com.lapczynski.commander.application.port.ReportRepository;
 import com.lapczynski.commander.application.port.SafetyMetrics;
@@ -17,6 +18,7 @@ import com.lapczynski.commander.application.report.IncidentReportRenderer;
 import com.lapczynski.commander.application.report.IncidentReportService;
 import com.lapczynski.commander.application.signal.MetricsPort;
 import com.lapczynski.commander.application.verification.RecoveryVerifier;
+import com.lapczynski.commander.domain.incident.Incident;
 import com.lapczynski.commander.domain.policy.PolicyConfiguration;
 import com.lapczynski.commander.domain.policy.PolicyEngine;
 import java.time.Clock;
@@ -95,6 +97,19 @@ public class CommanderConfiguration {
             policy.requiredTag().value(),
             "Environment",
             policy.environment()));
+  }
+
+  /**
+   * The remediation tool's view of an incident: does it exist, and what state is it in.
+   *
+   * <p>A lambda over the repository rather than the repository itself. The tool is the only code in
+   * the system that can change AWS, and handing it {@code IncidentRepository} would hand it {@code
+   * update} as well — the ability to rewrite the record it is about to be judged against. This
+   * gives it the one question it needs to ask.
+   */
+  @Bean
+  public IncidentStateLookup incidentStateLookup(IncidentRepository incidents) {
+    return incidentId -> incidents.findById(incidentId).map(Incident::status);
   }
 
   @Bean

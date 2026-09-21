@@ -17,6 +17,7 @@ import com.lapczynski.commander.adk.tools.InvestigationTools;
 import com.lapczynski.commander.application.port.IdempotencyStore;
 import com.lapczynski.commander.domain.approval.ActionFingerprint;
 import com.lapczynski.commander.domain.incident.IncidentId;
+import com.lapczynski.commander.domain.incident.IncidentStatus;
 import com.lapczynski.commander.domain.policy.PolicyConfiguration;
 import com.lapczynski.commander.domain.policy.PolicyEngine;
 import com.lapczynski.commander.persistence.PostgresIntegrationTest;
@@ -126,7 +127,12 @@ class DurablePipelineIntegrationTest extends PostgresIntegrationTest {
                         engine,
                         tags,
                         new RemediationTool(
-                            engine, new NoOpIdempotency(), tags, action -> "nothing was executed"),
+                            engine,
+                            // No incident row in these runs; stands in for one being remediated.
+                            id -> Optional.of(IncidentStatus.REMEDIATING),
+                            new NoOpIdempotency(),
+                            tags,
+                            action -> "nothing was executed"),
                         Schedulers.io())))
             .sessionService(new PostgresSessionService(jdbc, transactions, Schedulers.io()))
             .build();

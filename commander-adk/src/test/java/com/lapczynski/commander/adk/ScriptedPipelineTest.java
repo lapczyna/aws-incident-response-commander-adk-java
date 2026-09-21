@@ -19,6 +19,7 @@ import com.lapczynski.commander.adk.tools.InvestigationTools;
 import com.lapczynski.commander.application.port.IdempotencyStore;
 import com.lapczynski.commander.domain.approval.ActionFingerprint;
 import com.lapczynski.commander.domain.incident.IncidentId;
+import com.lapczynski.commander.domain.incident.IncidentStatus;
 import com.lapczynski.commander.domain.policy.PolicyConfiguration;
 import com.lapczynski.commander.domain.policy.PolicyEngine;
 import com.lapczynski.commander.simulator.ScenarioLibrary;
@@ -111,6 +112,9 @@ class ScriptedPipelineTest {
     RemediationTool remediation =
         new RemediationTool(
             engine,
+            // The tool now reads the incident before it writes anything. These runs have no
+            // incident row, so the lookup stands in for one that exists and is being remediated.
+            id -> Optional.of(IncidentStatus.REMEDIATING),
             new NoOpIdempotency(),
             Map.of("Project", "aws-incident-response-commander", "Environment", "demo"),
             action -> "nothing was executed");

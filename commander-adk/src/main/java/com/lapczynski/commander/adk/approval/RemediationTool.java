@@ -3,6 +3,7 @@ package com.lapczynski.commander.adk.approval;
 import com.google.adk.tools.Annotations.Schema;
 import com.lapczynski.commander.application.ExecutionJournal;
 import com.lapczynski.commander.application.port.IdempotencyStore;
+import com.lapczynski.commander.application.port.IncidentStateLookup;
 import com.lapczynski.commander.domain.approval.ActionFingerprint;
 import com.lapczynski.commander.domain.evidence.Confidence;
 import com.lapczynski.commander.domain.incident.IncidentId;
@@ -28,9 +29,12 @@ import org.slf4j.LoggerFactory;
  * ADK pauses the invocation and asks for a human before this body ever runs.
  *
  * <p><strong>Human approval is necessary and not sufficient.</strong> By the time execution reaches
- * this method a person has already said yes, and it still performs three independent checks:
+ * this method a person has already said yes, and it still performs four independent checks:
  *
  * <ol>
+ *   <li><strong>The incident is real, and is one actions may run from.</strong> Read before
+ *       anything is written. A request naming an incident that does not exist is one whose
+ *       authorisation cannot be established at all.
  *   <li><strong>Policy, again.</strong> The gate's verdict was formed before the human decided, and
  *       the world can move in between. Re-running the engine here means an approval cannot outlive
  *       the conditions that justified it, and it means no human can approve their way past the
@@ -42,7 +46,15 @@ import org.slf4j.LoggerFactory;
  *       simulated and reported as simulated. The default is that nothing happens.
  * </ol>
  *
- * <p>The order matters. The claim is taken <em>before</em> acting and completed afterwards, so a
+ * <p><strong>The order is the guard.</strong> Everything that can refuse does so before anything is
+ * written, and the claim is the first write. That was not true: the claim came before the incident
+ * was known to exist, and claiming carries a foreign key to it, so a request naming an unknown
+ * incident produced a constraint violation thrown out of this method rather than a refusal. The
+ * caller reported it as "the executor returned an unrecognised status", which reads as a broken
+ * executor rather than a rejected request — the worst available description of a guard doing its
+ * job.
+ *
+ * <p>Within the writes, the claim is taken <em>before</em> acting and completed afterwards, so a
  * crash mid-action leaves an {@code IN_PROGRESS} claim that blocks a blind retry rather than
  * inviting one.
  */
@@ -51,6 +63,7 @@ public class RemediationTool {
   private static final Logger log = LoggerFactory.getLogger(RemediationTool.class);
 
   private final PolicyEngine policyEngine;
+  private final IncidentStateLookup incidents;
   private final IdempotencyStore idempotency;
   private final Map<String, String> targetTags;
   private final RemediationExecutor executor;
@@ -68,10 +81,11 @@ public class RemediationTool {
 
   public RemediationTool(
       PolicyEngine policyEngine,
+      IncidentStateLookup incidents,
       IdempotencyStore idempotency,
       Map<String, String> targetTags,
       RemediationExecutor executor) {
-    this(policyEngine, idempotency, targetTags, executor, null, Clock.systemUTC());
+    this(policyEngine, incidents, idempotency, targetTags, executor, null, Clock.systemUTC());
   }
 
   /**
@@ -81,12 +95,14 @@ public class RemediationTool {
    */
   public RemediationTool(
       PolicyEngine policyEngine,
+      IncidentStateLookup incidents,
       IdempotencyStore idempotency,
       Map<String, String> targetTags,
       RemediationExecutor executor,
       ExecutionJournal journal,
       Clock clock) {
     this.policyEngine = policyEngine;
+    this.incidents = incidents;
     this.idempotency = idempotency;
     this.targetTags = Map.copyOf(targetTags);
     this.executor = executor;
@@ -146,27 +162,55 @@ public class RemediationTool {
       return refusal("MALFORMED_INCIDENT_ID", "incidentId is not a valid identifier");
     }
 
-    // --- 1. Policy, re-evaluated at execution time -----------------------------------------
+    // --- 1. The incident exists, and is one actions may run from ---------------------------
+    //
+    // Before the claim, because the claim is a write and it carries a foreign key to this
+    // incident. Establishing that the request refers to something real is a read, and reads that
+    // can refuse belong in front of writes that cannot.
+    Optional<IncidentStatus> status = incidents.statusOf(incident);
+    if (status.isEmpty()) {
+      log.warn("Refusing remediation for unknown incident: incidentId={}", incidentId);
+      return refusal(
+          "UNKNOWN_INCIDENT",
+          "No incident %s exists, so this action's authorisation cannot be established."
+              .formatted(incidentId));
+    }
+
+    // --- 2. Policy, re-evaluated at execution time -----------------------------------------
+    //
+    // The status is the one the incident actually holds, not the one this method would like it to
+    // hold. It used to pass IncidentStatus.REMEDIATING as a constant, which made
+    // INCIDENT_STATUS_FORBIDS_EXECUTION unfalsifiable in the single place it is meant to protect:
+    // the engine's own comment says that even a valid approval cannot make execution legitimate
+    // while the incident sits elsewhere, and a hardcoded argument quietly asserted otherwise.
     PolicyDecision decision =
         policyEngine.evaluate(
             action,
-            IncidentStatus.REMEDIATING,
+            status.get(),
             Confidence.clamped(confidence == null ? 0.0 : confidence),
             targetTags);
 
     if (decision instanceof PolicyDecision.Denied denied) {
+      // Every rule, named and explained, rather than the summary's "n rule(s) failed". An operator
+      // reading this has to be able to tell an expired allowlist entry from an incident that moved
+      // on underneath the approval, and those demand completely different responses.
+      String rules =
+          denied.violations().stream()
+              .map(v -> "%s (%s)".formatted(v.rule().name(), v.detail()))
+              .collect(java.util.stream.Collectors.joining("; "));
+
       log.warn(
-          "Refusing approved action at execution time: action={} target={} explanation={}",
+          "Refusing approved action at execution time: action={} target={} rules={}",
           action.type(),
           action.target().arn(),
-          denied.explanation());
+          rules);
       return refusal(
           "POLICY_DENIED_AT_EXECUTION",
           "This action was approved, but policy refuses it now: %s. Nothing has been changed."
-              .formatted(denied.explanation()));
+              .formatted(rules));
     }
 
-    // --- 2. Idempotency: claim before acting -----------------------------------------------
+    // --- 3. Idempotency: claim before acting -----------------------------------------------
     ActionFingerprint fingerprint =
         ActionFingerprint.of(action, incident, incidentVersion == null ? 0L : incidentVersion);
 
@@ -189,7 +233,7 @@ public class RemediationTool {
       return result;
     }
 
-    // --- 3. Execute, or simulate ------------------------------------------------------------
+    // --- 4. Execute, or simulate ------------------------------------------------------------
     boolean dryRun = policyEngine.isDryRun();
     Instant startedAt = clock.instant();
     try {
