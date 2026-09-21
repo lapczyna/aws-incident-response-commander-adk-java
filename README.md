@@ -18,10 +18,10 @@ API key are needed** to see it work or to run the tests.
 
 ## Status
 
-Built in phases. Current state: **Phase 10 of 11 complete** — there is now infrastructure to run it
-on, priced to the hour, and a teardown that checks its own work.
+Built in phases. Current state: **all eleven phases complete** — there is an operator console, an
+approval API, a narrated end-to-end demo and a runbook.
 
-`./mvnw verify` runs **472 tests** with no model API key and no AWS credentials.
+`./mvnw verify` runs **490 tests** with no model API key and no AWS credentials.
 
 | Phase | Scope | State |
 |---|---|---|
@@ -36,7 +36,7 @@ on, priced to the hour, and a teardown that checks its own work.
 | 8 | Recovery verification and reporting | ✅ done |
 | 9 | Evaluation, security and observability | ✅ done |
 | 10 | Cost-conscious AWS deployment | ✅ done |
-| 11 | Portfolio polish | next |
+| 11 | Operator console, approval API, demo and runbook | ✅ done |
 
 ---
 
@@ -70,6 +70,7 @@ Honest accounting, verified against `google/adk-java` v1.9.0 source rather than 
 | `ResumabilityConfig` is `@Deprecated` with no replacement shipped | Used deliberately, contained behind one factory method — [ADR-0005](docs/adr/0005-deprecated-resumability-config.md) |
 | No evaluation framework (Python's `google.adk.evaluation` has no Java twin) | JUnit golden-scenario harness — [ADR-0009](docs/adr/0009-junit-golden-scenario-evaluation.md) |
 | ADK is RxJava 3; Spring Boot 4 is not | One bridge class owning schedulers and MDC propagation — [ADR-0008](docs/adr/0008-rxjava-spring-bridge.md) |
+| `BaseSessionService.appendEvent` returns a `Single` that ADK never subscribes to | The durable implementation does its work eagerly and returns a completed `Single`; a lazy one loses a race the in-memory service cannot lose — [ADR-0004](docs/adr/0004-postgres-adk-service-implementations.md#addendum-phase-11-appendevent-must-be-eager-not-lazy) |
 
 The good news, also verified: **human-in-the-loop genuinely works in Java.**
 `ToolContext.requestConfirmation()`, `ToolConfirmation`, and `WorkflowAgentResumption` — which routes
@@ -89,7 +90,7 @@ commander-application   use cases and outbound ports
     ├── commander-persistence-postgres Flyway, repositories, ADK SPI implementations
     ├── commander-integrations-aws    CloudWatch, Logs, ECS, CloudTrail  (read-only + guarded actions)
     └── commander-simulator           deterministic fixtures — same ports, no AWS account
-commander-api           Spring Boot: REST, OpenAPI, security, Thymeleaf + HTMX console, SSE
+commander-api           Spring Boot: REST, OpenAPI, security, Thymeleaf + HTMX operator console
 demo-target-service     the fault-injectable payment API being investigated
 commander-testing       FakeLlm, golden scenarios, Testcontainers support
 ```
@@ -142,8 +143,21 @@ Fault injection is **off unless explicitly enabled**, every fault expires on its
 magnitude is clamped to a compiled-in ceiling. See [docs/simulator.md](docs/simulator.md).
 
 The Commander comes up on `localhost:8080` with the `fake` model and the simulator, so it reaches no
-provider and no AWS account. `COMMANDER_PROFILES=gemini,simulator docker compose up -d` swaps the
-model without touching anything else.
+provider and no AWS account. `COMMANDER_PROFILES=gemini,simulator,local-identity docker compose up -d`
+swaps the model without touching anything else — keep an identity profile in the list, because every
+security chain the application declares is behind one.
+
+### Watch it work
+
+```bash
+scripts/demo.sh                          # one incident end to end, every call printed
+open http://localhost:8080/console       # sign in as approver / commander
+```
+
+The console is one page: what is waiting for a human, and what is still open. With the shipped
+defaults the demo investigates and then refuses to act, because nothing is allowlisted — that is the
+system working, and [the runbook](docs/runbook.md) says how to permit one action so the approval
+gate has something to gate.
 
 ### Run it on AWS
 
@@ -244,9 +258,10 @@ defence. See [the threat model](docs/threat-model.md).
 | [Sample postmortem](docs/samples/postmortem-checkout-latency.md) | A real rendered report — of a remediation that did not work |
 | [Deployment](docs/deployment.md) | Bootstrap, deploy, reach it, and the teardown checklist |
 | [Cost analysis](docs/cost.md) | Itemised to the hour, and the five decisions that produced the number |
+| [Runbook](docs/runbook.md) | Operating it: who may decide what, what each decision commits you to, and what the confusing refusals mean |
 
-Arriving in Phase 11: the operator console and approval API, a scripted end-to-end demo, and a
-runbook.
+The console is at `/console` and the API at `/swagger-ui.html`. `scripts/demo.sh` drives one
+incident end to end and prints every call it makes.
 
 ---
 
@@ -262,4 +277,5 @@ Exact versions and the reasoning behind each: [`docs/dependency-matrix.md`](docs
 
 ## License
 
-Not yet licensed. A license will be added before the repository is published.
+[MIT](LICENSE). The dependencies keep their own licences; see
+[`docs/dependency-matrix.md`](docs/dependency-matrix.md).
