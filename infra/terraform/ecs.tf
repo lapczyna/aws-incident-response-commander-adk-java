@@ -85,6 +85,13 @@ locals {
         name      = "GEMINI_API_KEY"
         valueFrom = arn
       }
+    ],
+    # Present only under local-identity; under oidc there are no local users to hold a password for.
+    [
+      for arn in aws_secretsmanager_secret.console_password[*].arn : {
+        name      = "COMMANDER_DEMO_PASSWORD"
+        valueFrom = arn
+      }
     ]
   )
 }

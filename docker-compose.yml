@@ -61,9 +61,11 @@ services:
         condition: service_healthy
     environment:
       # fake and simulator: no model API key, no AWS credentials, no network calls to a provider.
-      # Change to gemini,simulator and set GEMINI_API_KEY to run it against a real model, or to
-      # fake,aws to read live AWS with a scripted model. The two choices are independent on purpose.
-      SPRING_PROFILES_ACTIVE: ${COMMANDER_PROFILES:-fake,simulator}
+      # Change to gemini,simulator,local-identity and set GEMINI_API_KEY to run it against a real
+      # model, or to fake,aws,local-identity to read live AWS with a scripted model. The choices
+      # are independent on purpose — but keep an identity profile in the list, because every
+      # security chain the application declares is behind one.
+      SPRING_PROFILES_ACTIVE: ${COMMANDER_PROFILES:-fake,simulator,local-identity}
       COMMANDER_DB_URL: jdbc:postgresql://postgres:5432/commander
       COMMANDER_DB_USER: commander
       COMMANDER_DB_PASSWORD: commander

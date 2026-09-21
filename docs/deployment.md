@@ -174,6 +174,27 @@ The task IP changes every time the task is replaced, which on Spot capacity can 
 is what the ALB buys, and whether $18/month is worth a stable name is the question `enable_alb`
 exists to make you answer.
 
+### Signing in to the console
+
+The operator console is at `/console`. Under the default `identity_profile = "local-identity"` the
+three demo identities are `approver`, `responder` and `viewer`, and they share a password Terraform
+generated — the application's documented default of `commander` is right for a laptop and wrong for
+anything with an address.
+
+```bash
+aws secretsmanager get-secret-value \
+  --secret-id "$(terraform output -raw console_password_secret_arn)" \
+  --query SecretString --output text
+```
+
+The value is in the Terraform state file, so treat that state as sensitive. It is deliberately not a
+Terraform output: an output appears in every plan log and in any CI artefact that captures one.
+
+For anything longer-lived than a demonstration, set `identity_profile = "oidc"` and point
+`spring.security.oauth2.resourceserver` at your issuer. That profile has no local users at all,
+creates no password secret, and accepts bearer tokens only — a token carrying no recognised role
+authenticates as a viewer, which can read and decide nothing.
+
 ### Turning the model on
 
 `model_profile = "fake"` is the default and runs the whole pipeline with scripted responses. For a

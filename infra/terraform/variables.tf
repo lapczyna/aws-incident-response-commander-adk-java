@@ -178,6 +178,17 @@ variable "signal_source" {
   }
 }
 
+variable "identity_profile" {
+  description = "How operators authenticate to the console and API: local-identity uses the three fixed demo users and a login form, oidc accepts bearer tokens from an issuer you configure and has no local users at all. Deployments that anyone else can reach should be oidc."
+  type        = string
+  default     = "local-identity"
+
+  validation {
+    condition     = contains(["local-identity", "oidc"], var.identity_profile)
+    error_message = "identity_profile must be local-identity or oidc. Omitting it entirely would leave the task with no security chain of its own."
+  }
+}
+
 variable "enable_remediation_actions" {
   description = "Attach the IAM action policy and set COMMANDER_ACTIONS_ENABLED. Off by default, which means the deployed task role physically cannot call ecs:UpdateService or ecs:StopTask, whatever the application believes about itself."
   type        = bool

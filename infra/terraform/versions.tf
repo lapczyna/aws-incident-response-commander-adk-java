@@ -9,6 +9,12 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    # Used for exactly one thing: generating the demo console password, so that a deployed stack
+    # does not run on the documented default.
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 

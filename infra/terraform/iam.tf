@@ -73,13 +73,15 @@ data "aws_iam_policy_document" "execution_secrets" {
     actions = ["secretsmanager:GetSecretValue"]
 
     # Enumerated, not wildcarded. The managed policy above grants no secret access at all, and this
-    # is the whole of it: the RDS-managed database credential, and the model key if there is one.
+    # is the whole of it: the RDS-managed database credential, the model key if there is one, and
+    # the console password if this deployment has local users.
     #
     # A splat rather than a conditional, because a splat over a resource with count = 0 is an empty
     # list while an index into one is an error.
     resources = concat(
       [aws_db_instance.this.master_user_secret[0].secret_arn],
       aws_secretsmanager_secret.gemini_api_key[*].arn,
+      aws_secretsmanager_secret.console_password[*].arn,
     )
   }
 }

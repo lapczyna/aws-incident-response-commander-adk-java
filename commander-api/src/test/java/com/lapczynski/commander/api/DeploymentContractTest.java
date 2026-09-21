@@ -158,6 +158,39 @@ class DeploymentContractTest {
         .isEmpty();
   }
 
+  /**
+   * The deployed task always gets an identity profile, and so does the local stack.
+   *
+   * <p>Every {@code SecurityFilterChain} the application declares is behind {@code local-identity}
+   * or {@code oidc}. A profile list that names neither leaves the task with Boot's autoconfigured
+   * chain instead: a generated password in the startup log, no login page, and a console nobody can
+   * sign in to. That is a deployment failure which looks exactly like an application bug, and
+   * nothing else in the build would catch it — the application starts perfectly well.
+   */
+  @Test
+  @DisplayName("every way of starting the application names an identity profile")
+  void anIdentityProfileIsAlwaysActive() throws IOException {
+    String locals = read(TERRAFORM.resolve("locals.tf"));
+    String variables = read(TERRAFORM.resolve("variables.tf"));
+    String compose = read(REPO_ROOT.resolve("docker-compose.yml"));
+    String yaml = read(APPLICATION_YAML);
+
+    assertThat(locals)
+        .as("the assembled profile list must include the identity choice")
+        .contains("var.identity_profile");
+    assertThat(terraformDefault(variables, "identity_profile"))
+        .as("the default has to be a profile that actually declares a chain")
+        .isEqualTo("local-identity");
+
+    assertThat(compose)
+        .as("the compose default profiles must name an identity profile too")
+        .contains("fake,simulator,local-identity");
+
+    assertThat(yaml)
+        .as("and so must the profile list the application falls back to when nothing sets one")
+        .containsPattern("default:\s*fake,simulator,local-identity");
+  }
+
   @Test
   @DisplayName("the log groups match the pattern the read policy is scoped to")
   void logGroupsAreWithinTheGrantedScope() throws IOException {

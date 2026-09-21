@@ -41,3 +41,39 @@ resource "aws_secretsmanager_secret_version" "gemini_api_key_placeholder" {
     ignore_changes = [secret_string]
   }
 }
+
+# ---------------------------------------------------------------------------------------------
+# The console password
+# ---------------------------------------------------------------------------------------------
+#
+# Generated here rather than defaulted in the application, because the application's default is
+# published: `commander` appears in application.yaml, in the README and on the login page. That is
+# the right default for a stack on a laptop and the wrong one for anything with an address.
+#
+# Only exists under `local-identity`. The `oidc` profile has no local users, so there is no
+# password to hold — which is the reason to prefer it for anything long-lived.
+
+resource "random_password" "console" {
+  count = var.identity_profile == "local-identity" ? 1 : 0
+
+  length  = 32
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "console_password" {
+  count = var.identity_profile == "local-identity" ? 1 : 0
+
+  name        = "${local.name}/console-password"
+  description = "Password for the three demo console identities. Read it with `aws secretsmanager get-secret-value`."
+
+  # No recovery window, for the reason the Gemini secret gives: a seven-day soft delete makes
+  # destroy-then-apply fail and leaves a charge behind after teardown.
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "console_password" {
+  count = var.identity_profile == "local-identity" ? 1 : 0
+
+  secret_id     = aws_secretsmanager_secret.console_password[0].id
+  secret_string = random_password.console[0].result
+}

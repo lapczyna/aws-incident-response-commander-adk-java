@@ -13,10 +13,14 @@ locals {
   # themselves cost nothing. The instance still runs in one AZ; see rds.tf.
   azs = slice(data.aws_availability_zones.available.names, 0, 2)
 
-  # Spring profiles, assembled from the two independent choices rather than from one deployment
+  # Spring profiles, assembled from the three independent choices rather than from one deployment
   # flag. The model profile decides what the reasoning costs; the signal profile decides whether
-  # anything is read from AWS at all.
-  spring_profiles = join(",", [var.model_profile, var.signal_source])
+  # anything is read from AWS at all; the identity profile decides who may decide an approval.
+  #
+  # All three are always present. Every security filter chain the application declares is behind an
+  # identity profile, so a task started without one falls back to Boot's generated password and no
+  # console login page — which looks like a broken deployment and is in fact an unconfigured one.
+  spring_profiles = join(",", [var.model_profile, var.signal_source, var.identity_profile])
 
   # Log-group names match the /aws/ecs/${project}-* pattern that the read IAM policy is scoped to.
   # If these diverge, the Commander loses the ability to read its own logs and the policy silently

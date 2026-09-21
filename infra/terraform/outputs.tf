@@ -44,6 +44,13 @@ output "gemini_secret_arn" {
   value       = one(aws_secretsmanager_secret.gemini_api_key[*].arn)
 }
 
+# The ARN, never the value. Terraform generated the password and it is in the state file, so an
+# output would also put it in every plan log and every CI artefact that captures one.
+output "console_password_secret_arn" {
+  description = "Read the console password with: aws secretsmanager get-secret-value --secret-id <this> --query SecretString --output text. Null under the oidc identity profile, which has no local users."
+  value       = one(aws_secretsmanager_secret.console_password[*].arn)
+}
+
 output "dashboard_url" {
   description = "The free-metrics dashboard."
   value       = "https://${var.region}.console.aws.amazon.com/cloudwatch/home?region=${var.region}#dashboards:name=${aws_cloudwatch_dashboard.this.dashboard_name}"
@@ -63,5 +70,6 @@ output "safety_posture" {
     dry_run                    = var.dry_run
     can_change_aws             = var.enable_remediation_actions && !var.dry_run
     inbound_access             = var.admin_cidr == "" ? "none" : var.admin_cidr
+    identity_profile           = var.identity_profile
   }
 }
