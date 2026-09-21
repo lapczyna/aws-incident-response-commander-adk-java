@@ -1,5 +1,6 @@
 package com.lapczynski.commander.aws;
 
+import com.lapczynski.commander.application.port.RemediationExecutorPort;
 import com.lapczynski.commander.domain.remediation.ActionType;
 import com.lapczynski.commander.domain.remediation.ProposedAction;
 import com.lapczynski.commander.domain.remediation.ResourceRef;
@@ -31,7 +32,7 @@ import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest;
  * <p>Every method is small and does exactly one AWS operation. There is no generic "call ECS" path,
  * because a generic path is one refactor away from being a general-purpose AWS capability.
  */
-public class AwsRemediationExecutor {
+public class AwsRemediationExecutor implements RemediationExecutorPort {
 
   private static final Logger log = LoggerFactory.getLogger(AwsRemediationExecutor.class);
 
@@ -55,6 +56,7 @@ public class AwsRemediationExecutor {
    * @throws IllegalStateException if the target does not carry the required tag, or the action type
    *     has no executor
    */
+  @Override
   public String execute(ProposedAction action) {
     verifyTagOnLiveResource(action.target());
 
