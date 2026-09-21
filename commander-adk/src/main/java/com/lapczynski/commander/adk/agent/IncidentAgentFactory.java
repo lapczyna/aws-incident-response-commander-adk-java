@@ -7,6 +7,8 @@ import com.google.adk.apps.App;
 import com.google.adk.apps.ResumabilityConfig;
 import com.google.adk.models.BaseLlm;
 import com.google.adk.tools.FunctionTool;
+import com.google.adk.tools.LongRunningFunctionTool;
+import com.lapczynski.commander.adk.approval.RemediationTool;
 import com.lapczynski.commander.adk.tools.ChangeTools;
 import com.lapczynski.commander.adk.tools.InvestigationTools;
 import com.lapczynski.commander.application.verification.RecoveryVerifier;
@@ -31,6 +33,15 @@ public final class IncidentAgentFactory {
 
   /** ADK requires an app name that is a valid identifier. */
   public static final String APP_NAME = "incident_commander";
+
+  /**
+   * Session-state key holding the reconciled account of what the evidence showed.
+   *
+   * <p>A constant rather than a literal because three things now depend on it agreeing: the
+   * synthesis agent writes it, the report narrator reads it back through instruction templating,
+   * and the workflow adapter reads it to explain why an incident closed without action.
+   */
+  public static final String KEY_INVESTIGATION_SUMMARY = "investigation_summary";
 
   /**
    * Ceiling on model calls for a single investigation.
@@ -60,7 +71,7 @@ public final class IncidentAgentFactory {
         .description("Collects evidence about a service incident and states what it shows.")
         .model(model)
         .maxSteps(MAX_AGENT_STEPS)
-        .outputKey("investigation_summary")
+        .outputKey(KEY_INVESTIGATION_SUMMARY)
         .tools(
             List.of(
                 FunctionTool.create(tools, "queryServiceMetric"),
@@ -145,7 +156,7 @@ public final class IncidentAgentFactory {
         .description("Reconciles the specialists' findings into a single account of the incident.")
         .model(model)
         .maxSteps(2)
-        .outputKey("investigation_summary")
+        .outputKey(KEY_INVESTIGATION_SUMMARY)
         .instruction(
             """
             You are the lead investigator. Four specialists have reported independently and their             findings are in session state:
@@ -218,7 +229,16 @@ public final class IncidentAgentFactory {
                 + "remediation, and submits it to the deterministic policy gate.")
         .subAgents(
             evidenceCollection(model, tools, changeTools, scheduler),
+            // Writes investigation_summary, which the narrator interpolates without a `?` and the
+            // workflow adapter reads to explain an incident that closed without acting. Omitting
+            // it does not degrade the report — ADK throws while rendering the instruction, and
+            // the incident closes as "Recovery could not be measured".
+            synthesis(model),
             DiagnosisAgents.refinementLoop(model),
+            // Between the loop and the planner, because both the planner's instruction and the
+            // gate read the confidence it writes. Deterministic, and the only thing in the
+            // pipeline that turns the hypothesis into a number anything is allowed to act on.
+            new HypothesisAppraisalAgent(),
             DiagnosisAgents.remediationPlanner(model),
             new PolicyGateAgent(policyEngine, targetTags))
         .build();
@@ -246,6 +266,90 @@ public final class IncidentAgentFactory {
   }
 
   /**
+   * The stage that performs an approved action.
+   *
+   * <p>Its one tool is registered with {@code requireConfirmation = true}, which is what makes ADK
+   * pause the invocation and ask for a human before the tool body runs. The instruction names the
+   * incident id and version from session state rather than letting the model recall them: the
+   * version is what the approval binds to (ADR-0007), and a model reconstructing it from memory
+   * would produce an action whose fingerprint does not match the one a human authorised.
+   *
+   * <p>{@code maxSteps} is 3 — call the tool, read the result, report. An executor that could keep
+   * going would be an executor that could try again after being refused.
+   */
+  public static LlmAgent remediationExecutor(BaseLlm model, RemediationTool tool) {
+    return LlmAgent.builder()
+        .name("remediation_executor")
+        .description("Performs a remediation that policy allowed and a human authorised.")
+        .model(model)
+        .maxSteps(3)
+        .tools(
+            List.of(
+                LongRunningFunctionTool.create(
+                    tool, "executeRemediation", /* requireConfirmation= */ true)))
+        .instruction(
+            """
+            Execute the remediation that has already been approved. You are not deciding whether             it is a good idea; that decision has been made.
+
+            The proposal, which policy has allowed:
+            {remediation_proposal}
+
+            Incident id: {incident_id}
+            Incident version: {incident_version}
+            Confidence of the hypothesis behind it: {hypothesis_confidence?}
+
+            Call executeRemediation exactly once, passing the incident id and incident version             above verbatim, and the action type, target ARN, account, region and environment             exactly as they appear in the proposal. Do not substitute values you think are more             correct.
+
+            The tool re-checks policy before it acts and may refuse. If it does, report the refusal             as it was given and stop. Do not retry, do not vary the arguments, and do not look for             another way to achieve the same effect.
+
+            When it returns, state in one sentence what happened, including whether it was a dry             run.
+            """)
+        .build();
+  }
+
+  /**
+   * The whole incident pipeline, from evidence to a guarded execution.
+   *
+   * <p>The same stages as {@link #diagnosisPipeline}, with one difference that carries the safety
+   * property: the executor is a <em>sub-agent of the gate</em> rather than a stage after it. A
+   * denial then does not run what it guards, which is a fact about the object graph rather than a
+   * signal some later code has to honour. See {@link PolicyGateAgent} for why the alternative does
+   * not hold.
+   *
+   * @param targetTags tags read from the target resource by the caller, never asserted by a model
+   */
+  public static SequentialAgent incidentPipeline(
+      BaseLlm model,
+      InvestigationTools tools,
+      ChangeTools changeTools,
+      PolicyEngine policyEngine,
+      Map<String, String> targetTags,
+      RemediationTool remediationTool,
+      Scheduler scheduler) {
+
+    return SequentialAgent.builder()
+        .name("incident_response")
+        .description(
+            "Collects evidence concurrently, refines a hypothesis under critique, proposes a "
+                + "remediation, submits it to the deterministic policy gate, and executes only "
+                + "what the gate allowed and a human authorised.")
+        .subAgents(
+            evidenceCollection(model, tools, changeTools, scheduler),
+            // See diagnosisPipeline: the narrator requires investigation_summary, and this is the
+            // only stage that writes it.
+            synthesis(model),
+            DiagnosisAgents.refinementLoop(model),
+            // Between the loop and the planner, because both the planner's instruction and the
+            // gate read the confidence it writes. Deterministic, and the only thing in the
+            // pipeline that turns the hypothesis into a number anything is allowed to act on.
+            new HypothesisAppraisalAgent(),
+            DiagnosisAgents.remediationPlanner(model),
+            new PolicyGateAgent(
+                policyEngine, targetTags, List.of(remediationExecutor(model, remediationTool))))
+        .build();
+  }
+
+  /**
    * Assembles the runnable app.
    *
    * <p><strong>This is the only place in the project that touches {@link
@@ -254,11 +358,26 @@ public final class IncidentAgentFactory {
    * on. Confining it to one method with one suppression means a future rename is a one-line change
    * rather than an audit. See ADR-0005.
    */
-  @SuppressWarnings("deprecation") // ADK 1.9.0 offers no replacement; see ADR-0005.
   public static App resumableApp(com.google.adk.agents.BaseAgent rootAgent) {
+    return resumableApp(rootAgent, List.of());
+  }
+
+  /**
+   * The same app, with plugins.
+   *
+   * <p>Plugins belong to the {@link App} rather than to the {@link com.google.adk.runner.Runner}:
+   * ADK refuses {@code Runner.builder().app(...).plugins(...)} outright, and the reason it refuses
+   * is sound — a plugin is part of what the app <em>is</em>, not part of how one caller chose to
+   * run it. Two runners over the same app would otherwise disagree about whether a budget applied.
+   */
+  @SuppressWarnings("deprecation") // ADK 1.9.0 offers no replacement; see ADR-0005.
+  public static App resumableApp(
+      com.google.adk.agents.BaseAgent rootAgent,
+      List<? extends com.google.adk.plugins.Plugin> plugins) {
     return App.builder()
         .name(APP_NAME)
         .rootAgent(rootAgent)
+        .plugins(plugins)
         .resumabilityConfig(ResumabilityConfig.builder().resumable(true).build())
         .build();
   }

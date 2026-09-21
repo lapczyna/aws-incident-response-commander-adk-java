@@ -104,3 +104,45 @@ agent types actually honour it.
 It exists here as a composed `SequentialAgent` plus the Java factory that builds it, rather than as
 an `LlmAgent`. The semantics the spec asked for are preserved; the LLM's authority over sequencing
 is not.
+
+---
+
+## Addendum (Phase 11): a state key nothing writes fails the pipeline, not the stage
+
+Three bugs of one shape, all found by the same test, none visible to any unit test.
+
+Stages hand off through session state: one agent's `outputKey` is the next agent's `{placeholder}`.
+That is the topology working as intended. The failure mode it creates is that **a key which no stage
+writes is not a degraded hand-off — it is a fatal one.** ADK raises `IllegalArgumentException:
+Context variable not found` while rendering the instruction, which aborts the whole invocation
+before it reaches whatever came next.
+
+What was missing:
+
+| Key | Read by | Written by | Consequence |
+|---|---|---|---|
+| `hypothesis_confidence` | `PolicyGateAgent`, the planner's instruction, `AdkIncidentWorkflow` | nothing | Gate fell back to the uncited floor of 0.4, below the shipped minimum of 0.7, so **every** proposal was refused for `CONFIDENCE_BELOW_THRESHOLD` and the approval gate was unreachable |
+| `investigation_summary` | the report narrator, `AdkIncidentWorkflow` | `synthesis()`, which was wired only into the Phase 4 pipeline | Narrator threw; the incident closed as "Recovery could not be measured" |
+
+The confidence case is the worse of the two, because it does not look like a failure. The gate
+refuses, the incident closes as `RESOLVED` with a policy explanation, and everything downstream
+behaves exactly as it should when policy says no. A reader would conclude the safe default was
+working. `HypothesisAppraisalAgent` now derives the confidence from the hypothesis deterministically
+and writes it.
+
+### Why no existing test caught either
+
+Each stage's own tests seed the state they need. `PolicyGateTest` puts `hypothesis_confidence` into
+the map by hand — it has to, because it is testing the threshold rule and needs to vary the number.
+`HypothesisParser`'s tests call the parser directly. The narrator's tests supply their own summary.
+Every one of those is a good test of its own unit, and not one of them could notice that in the
+assembled pipeline nobody was writing the key.
+
+Nor was running the pipeline enough on its own. `ScriptedPipelineTest` and
+`DurablePipelineIntegrationTest` both run the whole composition and both passed throughout, because
+they assert that the run reaches a policy decision — and it did, every time, with `DENIED`.
+
+What found them was running the assembled pipeline **against a deployment configured to permit an
+action** (`ApprovalFlowTest`). Only then does anything execute the stages past the gate. The general
+lesson: a pipeline whose safe default is "refuse" needs at least one end-to-end test that does not
+take the refusing path, or every stage after the refusal is untested and can rot silently.
