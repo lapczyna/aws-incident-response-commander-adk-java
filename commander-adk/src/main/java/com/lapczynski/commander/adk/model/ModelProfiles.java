@@ -71,6 +71,23 @@ public class ModelProfiles {
   }
 
   /**
+   * The deterministic model the demo and CI run on.
+   *
+   * <p>The one profile that reaches nothing at all. It exists so that the entire workflow can be
+   * demonstrated and tested without a key, a network or a bill, and so that "the default build
+   * calls no paid provider" is a property of the configuration rather than a habit.
+   *
+   * <p>It reasons about nothing, which is the point: every safety property this system claims has
+   * to hold regardless of what the model concludes, so demonstrating them against a model that
+   * concludes the same thing every time is a feature rather than a compromise.
+   */
+  @Bean
+  @Profile("fake")
+  public BaseLlm scriptedDemoModel() {
+    return new ScriptedDemoLlm();
+  }
+
+  /**
    * Amazon Nova Lite through Bedrock Converse.
    *
    * <p>The cheapest of the three real providers at $0.06/$0.24 per million tokens, and the only one
