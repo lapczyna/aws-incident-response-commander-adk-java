@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<!--
+  The demo sign-in.
+
+  Only reachable under the `local-identity` profile. The `oidc` profile has no local users and no
+  form login, so this page is never rendered there — which is why the credentials hint below can be
+  stated plainly rather than hidden behind a flag that someone would eventually get wrong.
+-->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — Incident Commander</title>
+  <link rel="stylesheet" th:href="@{/css/console.css}">
+</head>
+<body class="centred">
+
+<form th:action="@{/login}" method="post" class="panel login">
+  <h1>Incident&nbsp;Commander</h1>
+
+  <p class="error" th:if="${param.error}">That username and password did not match.</p>
+  <p class="note" th:if="${param.logout}">Signed out.</p>
+
+  <label>Username
+    <input name="username" autocomplete="username" autofocus required>
+  </label>
+  <label>Password
+    <input name="password" type="password" autocomplete="current-password" required>
+  </label>
+  <button type="submit">Sign in</button>
+
+  <!--
+    Three identities, because the approval rules need more than one to demonstrate. `responder`
+    opens incidents and cannot approve; `approver` decides; `viewer` can only read. The refusal
+    worth seeing is an approver being blocked from approving an incident they opened themselves.
+  -->
+  <p class="note">
+    Demo identities: <code>approver</code>, <code>responder</code>, <code>viewer</code>.
+    The password is whatever <code>COMMANDER_DEMO_PASSWORD</code> is set to, and
+    <code>commander</code> if it is unset.
+  </p>
+</form>
+
+</body>
+</html>

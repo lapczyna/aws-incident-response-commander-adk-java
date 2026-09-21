@@ -1,0 +1,235 @@
+/*
+ * The console's only stylesheet.
+ *
+ * Plain CSS, no build step, no framework. The page has two lists and four forms on it; a toolchain
+ * to style that would be more moving parts than the thing it styles. System fonts for the same
+ * reason the JavaScript is served from the jar: the deployed demo has no egress, and a webfont
+ * request that hangs would delay the queue an operator is waiting on.
+ */
+
+:root {
+  --ink: #16181d;
+  --muted: #5d6470;
+  --line: #d9dde3;
+  --panel: #ffffff;
+  --ground: #f4f5f7;
+  --accent: #0b5fff;
+  --danger: #b3261e;
+  --warn: #8a5a00;
+  --ok: #17603a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body.centred {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------------- chrome */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--ink);
+  color: #fff;
+}
+
+.bar .brand { font-weight: 600; letter-spacing: 0.2px; color: #fff; text-decoration: none; }
+.bar .spacer { flex: 1; }
+.bar .who { font-size: 13px; color: #c8ccd4; }
+.bar .role {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #343943;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+.bar .link {
+  background: none;
+  border: 0;
+  color: #c8ccd4;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+}
+.inline { display: inline; }
+
+main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* ---------------------------------------------------------------- panels */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+
+.panel h1 { margin: 0 0 12px; font-size: 20px; }
+.panel h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.count {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+
+.note { color: var(--muted); font-size: 13px; margin: 6px 0; }
+.note.empty { font-style: italic; }
+.error { color: var(--danger); font-size: 13px; }
+.summary { margin: 10px 0 0; }
+.closing { margin: 10px 0 0; font-weight: 600; }
+
+/* ---------------------------------------------------------------- forms */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+}
+
+.row { display: flex; gap: 8px; margin-top: 8px; }
+.row input { flex: 1; }
+
+label { display: block; font-size: 12px; color: var(--muted); }
+
+input, select {
+  width: 100%;
+  margin-top: 3px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+
+button {
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+button.approve { background: var(--ok); }
+button.reject { background: var(--danger); }
+button:hover { filter: brightness(1.08); }
+
+/* ---------------------------------------------------------------- approvals */
+
+.approval { border-left: 3px solid var(--warn); }
+.approval header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+
+.action { font-weight: 700; letter-spacing: 0.3px; }
+
+.risk {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  background: #eceef2;
+  color: var(--muted);
+}
+.risk-HIGH, .risk-CRITICAL { background: #fbe9e7; color: var(--danger); }
+.risk-MEDIUM { background: #fff4e0; color: var(--warn); }
+.risk-LOW { background: #e6f4ec; color: var(--ok); }
+
+/* Shown short, and monospaced, because it is read to be recognised rather than verified. */
+.fingerprint {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 10px 0; }
+dt { color: var(--muted); font-size: 13px; }
+dd { margin: 0; font-size: 14px; }
+dd ul { margin: 0; padding-left: 18px; }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.detail { display: inline-block; margin-top: 8px; font-size: 13px; }
+
+/* ---------------------------------------------------------------- tables */
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+}
+td { padding: 8px; border-bottom: 1px solid var(--line); }
+
+/* An incident blocked on a person is the one thing on this page worth catching an eye. */
+tr.awaiting td { background: #fff8e8; }
+
+.status {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.report {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+  overflow-x: auto;
+}
+
+/* ---------------------------------------------------------------- login */
+
+.login { width: 340px; }
+.login h1 { font-size: 18px; text-align: center; }
+.login label { margin-bottom: 10px; }
+.login button { width: 100%; }

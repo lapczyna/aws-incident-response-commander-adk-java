@@ -42,6 +42,12 @@
 
     <!-- Libraries not managed by the platform BOMs. -->
     <springdoc.version>3.1.1</springdoc.version>
+    <!--
+      Served from the jar rather than a CDN. The console has to work in the deployed demo, which
+      runs in a private subnet with no egress, and a script tag pointing at unpkg would make the
+      approval queue depend on someone else's uptime.
+    -->
+    <htmx.version>2.0.4</htmx.version>
     <logstash-encoder.version>9.0</logstash-encoder.version>
     <archunit.version>1.5.0</archunit.version>
     <wiremock.version>3.13.2</wiremock.version>
@@ -111,6 +117,11 @@
         <groupId>net.logstash.logback</groupId>
         <artifactId>logstash-logback-encoder</artifactId>
         <version>${logstash-encoder.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>htmx.org</artifactId>
+        <version>${htmx.version}</version>
       </dependency>
 
       <dependency>

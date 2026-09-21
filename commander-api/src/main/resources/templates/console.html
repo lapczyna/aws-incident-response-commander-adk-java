@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<!--
+  The operator console.
+
+  One screen, because there is one question it exists to answer: is anything waiting for me. The
+  approval queue is first and the incident list second for that reason — an operator who has to
+  scroll to find the thing blocking a production change is being asked to work around the page.
+-->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incident Commander</title>
+  <link rel="stylesheet" th:href="@{/css/console.css}">
+  <script th:src="@{/webjars/htmx.org/2.0.4/dist/htmx.min.js}" defer></script>
+</head>
+<body>
+
+<header class="bar">
+  <span class="brand">Incident&nbsp;Commander</span>
+  <span class="spacer"></span>
+  <span class="who">
+    <span th:text="${actor.displayName()}">operator</span>
+    <span class="role" th:text="${actor.role()}">VIEWER</span>
+  </span>
+  <form th:action="@{/logout}" method="post" class="inline">
+    <button type="submit" class="link">Sign out</button>
+  </form>
+</header>
+
+<main>
+
+  <!--
+    The scenario picker. Absent under the `aws` profile, where there is nothing to pick: an empty
+    list renders nothing rather than an empty control that does not work.
+  -->
+  <section class="panel" th:if="${!#lists.isEmpty(scenarios)}">
+    <h2>Simulated incident</h2>
+    <p class="note" th:if="${currentScenario != null}">
+      Serving <strong th:text="${currentScenario.title()}">a scenario</strong>
+      for <code th:text="${currentScenario.serviceName()}">service</code>.
+      Signals every investigation reads come from this fixture.
+    </p>
+    <form th:action="@{/console/scenario}" method="post" class="row" th:if="${canApprove}">
+      <select name="scenarioId">
+        <option th:each="s : ${scenarios}"
+                th:value="${s.id()}"
+                th:text="${s.title()}"
+                th:selected="${currentScenario != null and s.id() == currentScenario.id()}">
+        </option>
+      </select>
+      <button type="submit">Start</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Raise an incident</h2>
+    <p class="note">
+      Recorded first and investigated separately. The metric and its threshold are captured here
+      because recovery is judged by comparing against them later.
+    </p>
+    <form th:action="@{/console/incidents}" method="post" class="grid">
+      <label>Title
+        <input name="title" required maxlength="200"
+               th:value="${currentScenario != null} ? ${currentScenario.title()} : ''">
+      </label>
+      <label>Service
+        <input name="serviceName" required maxlength="100"
+               th:value="${currentScenario != null} ? ${currentScenario.serviceName()} : ''">
+      </label>
+      <label>Severity
+        <select name="severity">
+          <option value="SEV1">SEV1</option>
+          <option value="SEV2" selected>SEV2</option>
+          <option value="SEV3">SEV3</option>
+          <option value="SEV4">SEV4</option>
+        </select>
+      </label>
+      <label>Metric
+        <input name="metricName" maxlength="100" value="TargetResponseTimeP99">
+      </label>
+      <label>Observed
+        <input name="observedValue" type="number" step="any" value="1450">
+      </label>
+      <label>Recovered below
+        <input name="recoveryThreshold" type="number" step="any" value="500">
+      </label>
+      <button type="submit">Raise</button>
+    </form>
+  </section>
+
+  <!--
+    Polled rather than pushed. What changes without this operator doing anything is another person
+    deciding an approval, and three seconds is well inside the time it takes to notice. The
+    fragment carries its own polling attributes; see the comment in it.
+  -->
+  <div th:replace="~{fragments/queues :: queues}"></div>
+
+</main>
+</body>
+</html>

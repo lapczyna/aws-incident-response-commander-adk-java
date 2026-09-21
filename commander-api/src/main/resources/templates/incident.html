@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<!--
+  One incident, end to end.
+
+  Not polled. This page is read while deciding something, and markup that rearranged itself under a
+  reader halfway through an ARN would be actively hostile. It reloads when the reader acts.
+-->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title th:text="'Incident — ' + ${incident.title()}">Incident</title>
+  <link rel="stylesheet" th:href="@{/css/console.css}">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" th:href="@{/console}">Incident&nbsp;Commander</a>
+  <span class="spacer"></span>
+  <span class="who">
+    <span th:text="${actor.displayName()}">operator</span>
+    <span class="role" th:text="${actor.role()}">VIEWER</span>
+  </span>
+</header>
+
+<main>
+
+  <section class="panel">
+    <h1 th:text="${incident.title()}">title</h1>
+    <dl class="facts">
+      <dt>Status</dt>
+      <dd><span class="status" th:text="${incident.status()}">RECEIVED</span></dd>
+      <dt>Service</dt>
+      <dd th:text="${incident.service()} + ' (' + ${incident.environment()} + ')'">svc</dd>
+      <dt>Severity</dt>
+      <dd th:text="${incident.severity()}">SEV3</dd>
+      <dt>Received</dt>
+      <dd th:text="${incident.receivedAt()}">then</dd>
+      <!--
+        The version is shown because an approval binds to it. If it moves between reading a proposal
+        and deciding it, the approval no longer matches and is refused — which is a correct refusal
+        and an incomprehensible one unless the number is visible somewhere.
+      -->
+      <dt>Version</dt>
+      <dd th:text="${incident.version()}">0</dd>
+    </dl>
+
+    <p class="summary" th:if="${incident.summary() != null}" th:text="${incident.summary()}"></p>
+    <p class="closing" th:if="${incident.closingNote() != null}"
+       th:text="${incident.closingNote()}"></p>
+  </section>
+
+  <section class="panel" th:if="${incident.status() == 'RECEIVED'}">
+    <h2>Investigate</h2>
+    <p class="note">
+      Gathers evidence from four sources in parallel, argues against its own hypothesis, and either
+      proposes a remediation or closes saying why not. The request is held until it finishes.
+    </p>
+    <form th:action="@{'/console/incidents/' + ${incident.id()} + '/investigate'}" method="post"
+          class="grid">
+      <label>Metric
+        <input name="metricName" value="TargetResponseTimeP99" maxlength="100">
+      </label>
+      <label>Observed
+        <input name="observedValue" type="number" step="any" value="1450">
+      </label>
+      <label>Recovered below
+        <input name="recoveryThreshold" type="number" step="any" value="500">
+      </label>
+      <button type="submit">Run investigation</button>
+    </form>
+  </section>
+
+  <section class="panel approval" th:if="${approval != null}">
+    <h2>Proposed action, waiting for a human</h2>
+    <header>
+      <span class="action" th:text="${approval.action()}">ACTION</span>
+      <span class="risk" th:classappend="${'risk-' + approval.risk()}"
+            th:text="${approval.risk()}">RISK</span>
+      <span class="fingerprint" th:text="${approval.fingerprint()}">00000000</span>
+    </header>
+
+    <dl>
+      <dt>Target</dt>
+      <dd><code th:text="${approval.targetArn()}">arn</code></dd>
+      <dt>Rationale</dt>
+      <dd th:text="${approval.rationale()}">why</dd>
+      <dt>Expected impact</dt>
+      <dd th:text="${approval.expectedImpact()}">what</dd>
+      <dt>Evidence</dt>
+      <dd>
+        <ul>
+          <li th:each="e : ${approval.supportingEvidence()}" th:text="${e}">evidence</li>
+        </ul>
+      </dd>
+      <dt>Binds to version</dt>
+      <dd th:text="${approval.incidentVersion()}">0</dd>
+      <dt>Expires</dt>
+      <dd th:text="${approval.expiresAt()}">then</dd>
+    </dl>
+
+    <form th:if="${canApprove}" method="post"
+          th:action="@{'/console/approvals/' + ${approval.id()} + '/approve'}" class="row">
+      <input name="comment" placeholder="Why you are approving this" maxlength="1000">
+      <button type="submit" class="approve">Approve</button>
+    </form>
+    <form th:if="${canApprove}" method="post"
+          th:action="@{'/console/approvals/' + ${approval.id()} + '/reject'}" class="row">
+      <input name="comment" placeholder="Why you are rejecting this" maxlength="1000">
+      <button type="submit" class="reject">Reject</button>
+    </form>
+
+    <p class="note" th:unless="${canApprove}">
+      Deciding this needs an approver. The person who opened the incident is refused as well, which
+      is the separation-of-duties rule rather than a permissions problem.
+    </p>
+  </section>
+
+  <!--
+    The report, verbatim. Rendered in a <pre> rather than converted to HTML: it is the artefact the
+    system wrote and stored, and a console that reformatted it would be showing something that is
+    not quite what the audit trail holds.
+  -->
+  <section class="panel" th:if="${report != null}">
+    <h2>Postmortem</h2>
+    <pre class="report" th:text="${report}"></pre>
+  </section>
+
+  <p><a th:href="@{/console}">Back to the console</a></p>
+
+</main>
+</body>
+</html>

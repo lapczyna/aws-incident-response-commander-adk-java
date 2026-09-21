@@ -12,7 +12,7 @@ spring:
   # `fake` and `simulator` together mean the application is fully functional with no external
   # dependency but PostgreSQL. Override with SPRING_PROFILES_ACTIVE.
   profiles:
-    default: fake,simulator
+    default: fake,simulator,local-identity
 
   datasource:
     url: ${COMMANDER_DB_URL:jdbc:postgresql://localhost:5432/commander}
@@ -50,6 +50,11 @@ commander:
     required-tag:
       key: Project
       value: aws-incident-response-commander
+    # Empty means nothing is permitted and nothing is targetable. A deployment that wants an action
+    # to be possible has to name both the action and the exact resource, which is why a partially
+    # configured system refuses rather than acting broadly.
+    allowed-actions: ${COMMANDER_ALLOWED_ACTIONS:}
+    allowed-resource-arns: ${COMMANDER_ALLOWED_RESOURCE_ARNS:}
 
   aws:
     # Read by the AWS clients under the `aws` profile, and by the bedrock model profile, which
@@ -64,8 +69,25 @@ commander:
     monthly-budget-usd: ${COMMANDER_MODEL_BUDGET_USD:10.00}
 
   investigation:
-    max-tool-calls: 16
-    deadline: PT5M
+    # Bounds on one invocation, shared across the four specialists. An investigation that reaches
+    # either one reports what it has rather than failing: a partial answer with its gaps named is
+    # more use during an incident than no answer at all.
+    max-tool-calls: ${COMMANDER_MAX_TOOL_CALLS:16}
+    deadline: ${COMMANDER_INVESTIGATION_DEADLINE:PT5M}
+
+  approval:
+    # How long a human has before the request expires and cannot be approved.
+    ttl: ${COMMANDER_APPROVAL_TTL:PT1H}
+
+  demo:
+    # Which simulated incident the `simulator` profile serves. Switchable at runtime through
+    # /api/demo/scenarios, so a demo can move between incidents without a restart.
+    scenario: ${COMMANDER_DEMO_SCENARIO:latency-after-bad-deployment}
+
+  security:
+    # Only read under the `local-identity` profile. There is no production path that uses it: the
+    # `oidc` profile has no local users at all.
+    demo-password: ${COMMANDER_DEMO_PASSWORD:commander}
 
 management:
   endpoints:

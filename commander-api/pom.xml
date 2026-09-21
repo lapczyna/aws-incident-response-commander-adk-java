@@ -12,7 +12,7 @@
 
   <artifactId>commander-api</artifactId>
   <name>Commander :: API and UI</name>
-  <description>Spring Boot application: REST API, OpenAPI, Spring Security, Thymeleaf + HTMX operator console and SSE progress streaming.</description>
+  <description>Spring Boot application: REST API, OpenAPI, Spring Security, and the Thymeleaf + HTMX operator console.</description>
 
   <dependencies>
     <dependency>
@@ -61,6 +61,11 @@
     <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+    </dependency>
+    <!-- The console's only JavaScript dependency, served from the jar. See the root pom. -->
+    <dependency>
+      <groupId>org.webjars.npm</groupId>
+      <artifactId>htmx.org</artifactId>
     </dependency>
     <dependency>
       <groupId>net.logstash.logback</groupId>

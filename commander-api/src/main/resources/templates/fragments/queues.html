@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<!--
+  The two queues, refreshed together.
+
+  The fragment root carries the polling attributes and is swapped whole (`outerHTML`), so the
+  refreshed markup keeps polling. A fragment that returned only the inner lists would swap the
+  trigger away with them and the page would stop updating after three seconds — quietly, which is
+  the worst way for a queue of pending production changes to fail.
+-->
+<div xmlns:th="http://www.thymeleaf.org"
+     th:fragment="queues"
+     id="queues"
+     th:attr="hx-get=@{/console/queues}"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML">
+
+  <section class="panel">
+    <h2>
+      Waiting for a human
+      <span class="count" th:text="${#lists.size(approvals)}">0</span>
+    </h2>
+
+    <p class="note empty" th:if="${#lists.isEmpty(approvals)}">
+      Nothing is waiting. An investigation that proposes an action the policy engine permits will
+      appear here; one it refuses closes without ever reaching this queue.
+    </p>
+
+    <article class="approval" th:each="a : ${approvals}">
+      <header>
+        <span class="action" th:text="${a.action()}">ACTION</span>
+        <span class="risk" th:classappend="${'risk-' + a.risk()}" th:text="${a.risk()}">RISK</span>
+        <span class="fingerprint" th:text="${a.fingerprint()}">00000000</span>
+      </header>
+
+      <dl>
+        <dt>Target</dt>
+        <dd><code th:text="${a.targetArn()}">arn</code></dd>
+        <dt>Environment</dt>
+        <dd th:text="${a.targetEnvironment()}">demo</dd>
+        <dt>Rationale</dt>
+        <dd th:text="${a.rationale()}">why</dd>
+        <dt>Expected impact</dt>
+        <dd th:text="${a.expectedImpact()}">what it should do</dd>
+        <dt>Expires</dt>
+        <dd th:text="${a.expiresAt()}">then</dd>
+      </dl>
+
+      <!--
+        Both buttons post to the same endpoints the API exposes, and method security decides. A
+        viewer sees the queue and gets no controls; the server refuses them regardless, so hiding
+        them is a courtesy rather than the enforcement.
+      -->
+      <form th:if="${canApprove}" method="post"
+            th:action="@{'/console/approvals/' + ${a.id()} + '/approve'}" class="row">
+        <input name="comment" placeholder="Why you are approving this" maxlength="1000">
+        <button type="submit" class="approve">Approve</button>
+      </form>
+      <form th:if="${canApprove}" method="post"
+            th:action="@{'/console/approvals/' + ${a.id()} + '/reject'}" class="row">
+        <input name="comment" placeholder="Why you are rejecting this" maxlength="1000">
+        <button type="submit" class="reject">Reject</button>
+      </form>
+
+      <p class="note" th:unless="${canApprove}">
+        You are signed in as a role that cannot decide this. Deciding it needs an approver, and an
+        approver who did not open the incident.
+      </p>
+
+      <a class="detail" th:href="@{'/console/incidents/' + ${a.incidentId()}}">Open incident</a>
+    </article>
+  </section>
+
+  <section class="panel">
+    <h2>
+      Incidents in flight
+      <span class="count" th:text="${#lists.size(incidents)}">0</span>
+    </h2>
+
+    <p class="note empty" th:if="${#lists.isEmpty(incidents)}">No open incidents.</p>
+
+    <table th:unless="${#lists.isEmpty(incidents)}">
+      <thead>
+      <tr>
+        <th>Incident</th>
+        <th>Service</th>
+        <th>Severity</th>
+        <th>Status</th>
+        <th>Updated</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:each="i : ${incidents}" th:classappend="${i.awaitingHuman()} ? 'awaiting' : ''">
+        <td><a th:href="@{'/console/incidents/' + ${i.id()}}" th:text="${i.title()}">title</a></td>
+        <td th:text="${i.service()}">service</td>
+        <td th:text="${i.severity()}">SEV3</td>
+        <td><span class="status" th:text="${i.status()}">RECEIVED</span></td>
+        <td th:text="${i.updatedAt()}">then</td>
+      </tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
