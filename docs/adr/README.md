@@ -33,3 +33,9 @@ real human-in-the-loop support: `ToolContext.requestConfirmation(hint, payload)`
 memory service, no S3 artifact service, no evaluation framework (ADR-0009). `ResumabilityConfig` is
 deprecated with no replacement shipped (ADR-0005). ADK is RxJava-based while Spring Boot 4 is not
 (ADR-0008).
+
+**Present, and sharper than it looks** — `BaseSessionService.appendEvent` returns a `Single` that ADK
+calls but does not subscribe to, so a custom implementation has to do its work before returning
+rather than when subscribed. The in-memory service hides this by mutating on the calling thread; a
+durable one that defers loses evidence from whichever `ParallelAgent` branch finishes last. See the
+Phase 11 addendum to ADR-0004.

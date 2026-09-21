@@ -99,3 +99,41 @@ production.
 **Explicitly rejected:** falling back to `InMemorySessionService` outside a named test profile.
 Silent in-memory fallback would make the durability claim false in exactly the situation that
 matters — an unplanned restart.
+
+---
+
+## Addendum (Phase 11): `appendEvent` must be eager, not lazy
+
+A second divergence, found by running the assembled pipeline against the durable service rather than
+against the in-memory one.
+
+`BaseSessionService.appendEvent` returns `Single<Event>`, which reads as an invitation to build the
+work lazily and let the subscriber decide when it happens — `Single.fromCallable(...)
+.subscribeOn(ioScheduler)` is the idiomatic shape, and it is what this implementation originally
+used.
+
+**ADK does not treat it that way.** It emits the event, calls `appendEvent`, and lets the agent tree
+carry on. Whatever the returned `Single` has not yet done is not done. `InMemorySessionService` never
+exposes this because it mutates a map on the calling thread: by the time the method returns, the
+write has happened whether anyone subscribed or not.
+
+The symptom was specific and misleading. Four specialists run concurrently inside a `ParallelAgent`;
+the slowest of them was still appending its result when the next stage began rendering an
+instruction that interpolates it. ADK raises `IllegalArgumentException: Context variable not found:
+evidence_ecs` while rendering, which fails the whole invocation before it reaches the policy gate —
+so it presents as a failed investigation rather than as a lost write. It passed on the in-memory
+service every time, and on PostgreSQL it failed on whichever branch happened to be last.
+
+`PostgresSessionService.appendEvent` therefore does all of its work before returning, and returns an
+already-completed `Single`. The live session is updated first, on the calling thread, because that
+object is what the next stage reads; the row, the event and any `app:`/`user:` scoped keys are
+written in one transaction immediately afterwards. The caller blocks on JDBC, which is the correct
+thread to block — the agents are handed an IO scheduler precisely because they do blocking work.
+
+`DurablePipelineIntegrationTest` is the regression test, and it is deliberately the *assembled*
+pipeline rather than a unit test of the service. No test of `appendEvent` in isolation would have
+caught this: the method was correct in everything it did, and wrong only in when it did it.
+
+The general lesson for anyone implementing an ADK Java SPI: **an `Single`-returning SPI method is not
+necessarily awaited.** Check, per method, whether the framework subscribes and waits before
+depending on laziness.

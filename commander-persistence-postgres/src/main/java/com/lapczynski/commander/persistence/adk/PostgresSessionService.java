@@ -226,8 +226,30 @@ public class PostgresSessionService implements BaseSessionService {
    * <p>Follows {@link BaseSessionService}'s contract precisely: partial events are not persisted,
    * {@code app:} and {@code user:} keys are routed to their own tables with the prefix stripped,
    * {@code temp:} keys are dropped, and {@link State#REMOVED} deletes rather than storing a
-   * sentinel. The in-memory session object is updated too, because ADK continues to read from it
-   * within the same invocation.
+   * sentinel.
+   *
+   * <p><strong>The live session is updated on the calling thread, before anything is
+   * scheduled.</strong> ADK reads {@code session.state()} to render the next stage's instruction,
+   * and it does so as soon as this method returns — not when the returned {@code Single} completes.
+   * Deferring the in-memory mutation onto {@code ioScheduler} along with the database write
+   * therefore loses a race the in-memory session service cannot lose, because that one mutates
+   * synchronously. The symptom is an evidence key missing from an instruction, which ADK turns into
+   * {@code IllegalArgumentException: Context variable not found}, and which appears only when the
+   * database is slow enough to lose — so it passes locally and fails under load.
+   *
+   * <p><strong>The database write is eager too, and the returned {@code Single} is already
+   * complete.</strong> ADK treats calling this method as the write having happened: it emits the
+   * event, calls here, and lets the agent tree carry on. A {@code Single} that only did its work
+   * when subscribed leaves the window that {@code DurablePipelineIntegrationTest} exercises — four
+   * specialists running concurrently, the slowest of them still appending its result while the
+   * stage that interpolates that result has already begun rendering its instruction. ADK's
+   * in-memory service does its work on the calling thread and never loses that race, which is why
+   * the same pipeline passes there and fails here.
+   *
+   * <p>The cost is that this blocks the caller on JDBC. That is the right thread to block: the
+   * agents are given an IO scheduler precisely because they do blocking work, and the alternative —
+   * a faster method that returns before the session is what it claims to be — is not a trade worth
+   * making in the component the approval flow resumes from.
    */
   @Override
   @Transactional
@@ -238,45 +260,84 @@ public class PostgresSessionService implements BaseSessionService {
       return Single.just(event);
     }
 
-    return Single.fromCallable(
-            () ->
-                transactions.execute(
-                    status -> {
-                      String appName = session.appName();
-                      String userId = session.userId();
-                      String sessionId = session.id();
+    // Synchronous, on the caller's thread. See the note above: everything downstream reads this
+    // object, and it has to be correct before this method returns.
+    applyToLiveSession(session, event);
 
-                      applyStateDelta(appName, userId, sessionId, session, event);
-                      persistEvent(appName, userId, sessionId, event);
+    Instant appendedAt = Instant.ofEpochMilli(event.timestamp());
+    session.lastUpdateTime(appendedAt);
 
-                      Instant eventTime = Instant.ofEpochMilli(event.timestamp());
-                      jdbc.sql(
-                              """
-                              UPDATE adk_sessions
-                                 SET state = CAST(:state AS jsonb), last_update_time = :now
-                               WHERE app_name = :appName
-                                 AND user_id = :userId
-                                 AND session_id = :sessionId
-                              """)
-                          .param("state", writeJson(sessionScopedState(session.state())))
-                          .param("now", OffsetDateTime.ofInstant(eventTime, ZoneOffset.UTC))
-                          .param("appName", appName)
-                          .param("userId", userId)
-                          .param("sessionId", sessionId)
-                          .update();
+    // Eager, not deferred. See the note above.
+    transactions.execute(
+        status -> {
+          String appName = session.appName();
+          String userId = session.userId();
+          String sessionId = session.id();
 
-                      // Keeps the live object consistent with storage for the rest of the run.
-                      session.events().add(event);
-                      session.lastUpdateTime(eventTime);
-                      return event;
-                    }))
-        .subscribeOn(ioScheduler);
+          persistScopedState(appName, userId, event);
+          persistEvent(appName, userId, sessionId, event);
+
+          jdbc.sql(
+                  """
+                  UPDATE adk_sessions
+                     SET state = CAST(:state AS jsonb), last_update_time = :now
+                   WHERE app_name = :appName
+                     AND user_id = :userId
+                     AND session_id = :sessionId
+                  """)
+              .param("state", writeJson(sessionScopedState(session.state())))
+              .param("now", OffsetDateTime.ofInstant(appendedAt, ZoneOffset.UTC))
+              .param("appName", appName)
+              .param("userId", userId)
+              .param("sessionId", sessionId)
+              .update();
+
+          return event;
+        });
+
+    return Single.just(event);
   }
 
   // ----------------------------------------------------------------- helpers
 
-  private void applyStateDelta(
-      String appName, String userId, String sessionId, Session session, Event event) {
+  /**
+   * Applies an event's state delta to the live session object.
+   *
+   * <p>In memory only, and on the caller's thread. {@code temp:} keys are dropped per ADK's
+   * contract; {@link State#REMOVED} deletes rather than storing a sentinel; everything else,
+   * prefixed or not, is what the next stage will read.
+   */
+  private void applyToLiveSession(Session session, Event event) {
+    EventActions actions = event.actions();
+    if (actions == null || actions.stateDelta() == null || actions.stateDelta().isEmpty()) {
+      session.events().add(event);
+      return;
+    }
+
+    actions
+        .stateDelta()
+        .forEach(
+            (key, value) -> {
+              if (key.startsWith(State.TEMP_PREFIX)) {
+                return;
+              }
+              if (value == State.REMOVED) {
+                session.state().remove(key);
+              } else {
+                session.state().put(key, value);
+              }
+            });
+
+    session.events().add(event);
+  }
+
+  /**
+   * Routes {@code app:} and {@code user:} keys to the tables that outlive this session.
+   *
+   * <p>Separate from {@link #applyToLiveSession} because these are the only parts of a delta that
+   * touch the database directly; the session's own keys go into the row in one write at the end.
+   */
+  private void persistScopedState(String appName, String userId, Event event) {
     EventActions actions = event.actions();
     if (actions == null || actions.stateDelta() == null || actions.stateDelta().isEmpty()) {
       return;
@@ -293,7 +354,6 @@ public class PostgresSessionService implements BaseSessionService {
                     null,
                     key.substring(State.APP_PREFIX.length()),
                     value);
-                session.state().put(key, value);
               } else if (key.startsWith(State.USER_PREFIX)) {
                 writeScopedState(
                     "adk_user_state",
@@ -301,14 +361,6 @@ public class PostgresSessionService implements BaseSessionService {
                     userId,
                     key.substring(State.USER_PREFIX.length()),
                     value);
-                session.state().put(key, value);
-              } else if (key.startsWith(State.TEMP_PREFIX)) {
-                // Never persisted, by ADK's contract, and not applied to the session either.
-                return;
-              } else if (value == State.REMOVED) {
-                session.state().remove(key);
-              } else {
-                session.state().put(key, value);
               }
             });
   }
@@ -470,7 +522,9 @@ public class PostgresSessionService implements BaseSessionService {
         .appName(appName)
         .userId(userId)
         .state(merged)
-        .events(new ArrayList<>(events))
+        // Synchronised, because the four specialists inside the ParallelAgent append to this list
+        // from four threads at once. An ArrayList here loses events, and it loses them silently.
+        .events(java.util.Collections.synchronizedList(new ArrayList<>(events)))
         .lastUpdateTime(lastUpdateTime)
         .build();
   }
